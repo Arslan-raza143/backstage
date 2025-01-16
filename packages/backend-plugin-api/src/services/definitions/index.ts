@@ -16,37 +16,68 @@
 
 export { coreServices } from './coreServices';
 export type {
+  AuthService,
+  BackstageCredentials,
+  BackstageUserPrincipal,
+  BackstageServicePrincipal,
+  BackstagePrincipalAccessRestrictions,
+  BackstagePrincipalTypes,
+  BackstageNonePrincipal,
+} from './AuthService';
+export type {
   CacheService,
   CacheServiceOptions,
   CacheServiceSetOptions,
 } from './CacheService';
-export type { ConfigService } from './ConfigService';
+export type { RootConfigService } from './RootConfigService';
 export type { DatabaseService } from './DatabaseService';
 export type { DiscoveryService } from './DiscoveryService';
-export type { HttpRouterService } from './HttpRouterService';
+export type { RootHealthService } from './RootHealthService';
+export type {
+  HttpRouterService,
+  HttpRouterServiceAuthPolicy,
+} from './HttpRouterService';
+export type { HttpAuthService } from './HttpAuthService';
 export type {
   LifecycleService,
+  LifecycleServiceStartupHook,
+  LifecycleServiceStartupOptions,
   LifecycleServiceShutdownHook,
   LifecycleServiceShutdownOptions,
 } from './LifecycleService';
 export type { LoggerService } from './LoggerService';
-export type { PermissionsService } from './PermissionsService';
+export type {
+  PermissionsService,
+  PermissionsServiceRequestOptions,
+} from './PermissionsService';
+export type {
+  PermissionsRegistryService,
+  PermissionsRegistryServiceAddResourceTypeOptions,
+} from './PermissionsRegistryService';
 export type { PluginMetadataService } from './PluginMetadataService';
 export type { RootHttpRouterService } from './RootHttpRouterService';
 export type { RootLifecycleService } from './RootLifecycleService';
 export type { RootLoggerService } from './RootLoggerService';
-export type { SchedulerService } from './SchedulerService';
-export type { TokenManagerService } from './TokenManagerService';
+export { readSchedulerServiceTaskScheduleDefinitionFromConfig } from './SchedulerService';
 export type {
-  ReadTreeOptions,
-  ReadTreeResponse,
-  ReadTreeResponseDirOptions,
-  ReadTreeResponseFile,
-  ReadUrlResponse,
-  ReadUrlOptions,
-  SearchOptions,
-  SearchResponse,
-  SearchResponseFile,
+  SchedulerService,
+  SchedulerServiceTaskDescriptor,
+  SchedulerServiceTaskFunction,
+  SchedulerServiceTaskInvocationDefinition,
+  SchedulerServiceTaskRunner,
+  SchedulerServiceTaskScheduleDefinition,
+  SchedulerServiceTaskScheduleDefinitionConfig,
+} from './SchedulerService';
+export type {
+  UrlReaderServiceReadTreeOptions,
+  UrlReaderServiceReadTreeResponse,
+  UrlReaderServiceReadTreeResponseDirOptions,
+  UrlReaderServiceReadTreeResponseFile,
+  UrlReaderServiceReadUrlResponse,
+  UrlReaderServiceReadUrlOptions,
+  UrlReaderServiceSearchOptions,
+  UrlReaderServiceSearchResponse,
+  UrlReaderServiceSearchResponseFile,
   UrlReaderService,
 } from './UrlReaderService';
-export type { IdentityService } from './IdentityService';
+export type { BackstageUserInfo, UserInfoService } from './UserInfoService';

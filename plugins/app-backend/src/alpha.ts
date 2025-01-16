@@ -14,5 +14,8 @@
  * limitations under the License.
  */
 
-export { appPlugin } from './service/appPlugin';
-export type { AppPluginOptions } from './service/appPlugin';
+import { appPlugin } from './service/appPlugin';
+
+/** @alpha */
+const _appPlugin = appPlugin;
+export default _appPlugin;

@@ -14,24 +14,26 @@
  * limitations under the License.
  */
 
-export { createSharedEnvironment } from './createSharedEnvironment';
-export type {
-  SharedBackendEnvironment,
-  SharedBackendEnvironmentConfig,
-} from './createSharedEnvironment';
-export type {
-  BackendModuleConfig,
-  BackendPluginConfig,
-  ExtensionPointConfig,
-} from './factories';
+import { type CreateBackendModuleOptions } from './createBackendModule';
+import { type CreateBackendPluginOptions } from './createBackendPlugin';
+import { type CreateExtensionPointOptions } from './createExtensionPoint';
+
+export { createBackendModule } from './createBackendModule';
+export { createBackendPlugin } from './createBackendPlugin';
+export { createExtensionPoint } from './createExtensionPoint';
 export {
-  createBackendModule,
-  createBackendPlugin,
-  createExtensionPoint,
-} from './factories';
+  createBackendFeatureLoader,
+  type CreateBackendFeatureLoaderOptions,
+} from './createBackendFeatureLoader';
+
 export type {
   BackendModuleRegistrationPoints,
   BackendPluginRegistrationPoints,
-  BackendFeature,
   ExtensionPoint,
 } from './types';
+
+export type {
+  CreateBackendPluginOptions,
+  CreateBackendModuleOptions,
+  CreateExtensionPointOptions,
+};

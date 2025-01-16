@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-import { coreServices } from '@backstage/backend-plugin-api';
-import { startTestBackend } from '@backstage/backend-test-utils';
-import { ConfigReader } from '@backstage/config';
+import { mockServices, startTestBackend } from '@backstage/backend-test-utils';
 import { eventsExtensionPoint } from '@backstage/plugin-events-node/alpha';
 import {
   HttpPostIngressOptions,
@@ -27,11 +25,10 @@ import { eventsModuleGitlabWebhook } from './eventsModuleGitlabWebhook';
 describe('gitlabWebhookEventsModule', () => {
   const requestWithToken = (token?: string) => {
     return {
-      body: undefined,
       headers: {
         'x-gitlab-token': token,
       },
-    } as RequestDetails;
+    } as Partial<RequestDetails> as unknown as RequestDetails;
   };
 
   it('should be correctly wired and set up', async () => {
@@ -42,20 +39,22 @@ describe('gitlabWebhookEventsModule', () => {
       },
     };
 
-    const config = new ConfigReader({
-      events: {
-        modules: {
-          gitlab: {
-            webhookSecret: 'test-secret',
-          },
-        },
-      },
-    });
-
     await startTestBackend({
       extensionPoints: [[eventsExtensionPoint, extensionPoint]],
-      services: [[coreServices.config, config]],
-      features: [eventsModuleGitlabWebhook()],
+      features: [
+        eventsModuleGitlabWebhook,
+        mockServices.rootConfig.factory({
+          data: {
+            events: {
+              modules: {
+                gitlab: {
+                  webhookSecret: 'test-secret',
+                },
+              },
+            },
+          },
+        }),
+      ],
     });
 
     expect(addedIngress).not.toBeUndefined();

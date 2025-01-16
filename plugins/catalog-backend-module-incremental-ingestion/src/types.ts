@@ -14,23 +14,22 @@
  * limitations under the License.
  */
 
-import type {
-  PluginDatabaseManager,
-  UrlReader,
-} from '@backstage/backend-common';
-import type {
-  PluginTaskScheduler,
-  TaskFunction,
-} from '@backstage/backend-tasks';
-import type { Config } from '@backstage/config';
+import {
+  DatabaseService,
+  LoggerService,
+  PermissionsService,
+  RootConfigService,
+  RootLoggerService,
+  SchedulerService,
+  SchedulerServiceTaskFunction,
+  UrlReaderService,
+} from '@backstage/backend-plugin-api';
 import type {
   DeferredEntity,
   EntityProviderConnection,
 } from '@backstage/plugin-catalog-node';
 import { EventParams } from '@backstage/plugin-events-node';
-import type { PermissionEvaluator } from '@backstage/plugin-permission-common';
-import type { DurationObjectUnits } from 'luxon';
-import type { Logger } from 'winston';
+import { HumanDuration } from '@backstage/types';
 import { IncrementalIngestionDatabaseManager } from './database/IncrementalIngestionDatabaseManager';
 
 /**
@@ -91,15 +90,12 @@ export interface IncrementalEntityProvider<TCursor, TContext> {
      * optionally maps the payload to an object containing a delta
      * mutation.
      *
-     * If a valid delta is returned by this method, it will be ingested
-     * automatically by the provider.
+     * If a delta result is returned by this method, it will be ingested
+     * automatically by the provider. Alternatively, if an "ignored" result is
+     * returned, then it is understood that this event should not cause anything
+     * to be ingested.
      */
-    onEvent: (params: EventParams) =>
-      | undefined
-      | {
-          added: DeferredEntity[];
-          removed: { entityRef: string }[];
-        };
+    onEvent: (params: EventParams) => Promise<IncrementalEntityEventResult>;
 
     /**
      * This method returns an array of topics for the IncrementalEntityProvider
@@ -108,6 +104,22 @@ export interface IncrementalEntityProvider<TCursor, TContext> {
     supportsEventTopics: () => string[];
   };
 }
+
+/**
+ * An object returned by event handler to indicate whether to ignore the event
+ * or to apply a delta in response to the event.
+ *
+ * @public
+ */
+export type IncrementalEntityEventResult =
+  | {
+      type: 'ignored';
+    }
+  | {
+      type: 'delta';
+      added: DeferredEntity[];
+      removed: { entityRef: string }[];
+    };
 
 /**
  * Value returned by an {@link IncrementalEntityProvider} to provide a
@@ -133,27 +145,27 @@ export interface IncrementalEntityProviderOptions {
    * Entities are ingested in bursts. This interval determines how
    * much time to wait in between each burst.
    */
-  burstInterval: DurationObjectUnits;
+  burstInterval: HumanDuration;
 
   /**
    * Entities are ingested in bursts. This value determines how long
    * to keep ingesting within each burst.
    */
-  burstLength: DurationObjectUnits;
+  burstLength: HumanDuration;
 
   /**
    * After a successful ingestion, the incremental entity provider
    * will rest for this period of time before starting to ingest
    * again.
    */
-  restLength: DurationObjectUnits;
+  restLength: HumanDuration;
 
   /**
    * In the event of an error during an ingestion burst, the backoff
    * determines how soon it will be retried. E.g.
    * `[{ minutes: 1}, { minutes: 5}, {minutes: 30 }, { hours: 3 }]`
    */
-  backoff?: DurationObjectUnits[];
+  backoff?: HumanDuration[];
 
   /**
    * If an error occurs at a data source that results in a large
@@ -174,24 +186,24 @@ export interface IncrementalEntityProviderOptions {
 
 /** @public */
 export type PluginEnvironment = {
-  logger: Logger;
-  database: PluginDatabaseManager;
-  scheduler: PluginTaskScheduler;
-  config: Config;
-  reader: UrlReader;
-  permissions: PermissionEvaluator;
+  logger: RootLoggerService;
+  database: DatabaseService;
+  scheduler: SchedulerService;
+  config: RootConfigService;
+  reader: UrlReaderService;
+  permissions: PermissionsService;
 };
 
 export interface IterationEngine {
-  taskFn: TaskFunction;
+  taskFn: SchedulerServiceTaskFunction;
 }
 
 export interface IterationEngineOptions {
-  logger: Logger;
+  logger: LoggerService;
   connection: EntityProviderConnection;
   manager: IncrementalIngestionDatabaseManager;
   provider: IncrementalEntityProvider<unknown, unknown>;
-  restLength: DurationObjectUnits;
+  restLength: HumanDuration;
   ready: Promise<void>;
   backoff?: IncrementalEntityProviderOptions['backoff'];
   rejectRemovalsAbovePercentage?: number;

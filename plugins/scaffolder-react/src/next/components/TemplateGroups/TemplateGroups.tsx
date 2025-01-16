@@ -21,17 +21,10 @@ import {
   TemplateEntityV1beta3,
 } from '@backstage/plugin-scaffolder-common';
 import { Progress, Link } from '@backstage/core-components';
-import { Typography } from '@material-ui/core';
+import Typography from '@material-ui/core/Typography';
 import { errorApiRef, IconComponent, useApi } from '@backstage/core-plugin-api';
-import { TemplateGroup } from '@backstage/plugin-scaffolder-react/alpha';
-
-/**
- * @alpha
- */
-export type TemplateGroupFilter = {
-  title?: React.ReactNode;
-  filter: (entity: TemplateEntityV1beta3) => boolean;
-};
+import { TemplateGroupFilter } from '@backstage/plugin-scaffolder-react';
+import { TemplateGroup } from '../TemplateGroup/TemplateGroup';
 
 /**
  * @alpha
@@ -91,7 +84,7 @@ export const TemplateGroups = (props: TemplateGroupsProps) => {
       {groups.map(({ title, filter }, index) => {
         const templates = entities
           .filter(isTemplateEntityV1beta3)
-          .filter(e => (templateFilter ? !templateFilter(e) : true))
+          .filter(e => (templateFilter ? templateFilter(e) : true))
           .filter(filter)
           .map(template => {
             const additionalLinks =

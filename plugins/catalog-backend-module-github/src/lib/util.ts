@@ -99,3 +99,18 @@ export function splitTeamSlug(slug: string): [string, string] {
   }
   return [parts[0], parts[1]];
 }
+
+export function satisfiesVisibilityFilter(
+  visibilities: string[],
+  visibility: string,
+): Boolean {
+  if (!visibilities.length) {
+    return true;
+  }
+  const lowerCaseVisibilities = visibilities.map(v =>
+    v.toLocaleLowerCase('en-US'),
+  );
+  const lowerCaseVisibility = visibility.toLocaleLowerCase('en-US');
+
+  return lowerCaseVisibilities.includes(lowerCaseVisibility);
+}

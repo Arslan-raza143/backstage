@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { ExtendedPackageJSON } from '../monorepo';
+import { BackstagePackage, BackstagePackageJson } from '@backstage/cli-node';
 
 export enum Output {
   esm,
@@ -25,8 +25,8 @@ export enum Output {
 export type BuildOptions = {
   logPrefix?: string;
   targetDir?: string;
-  packageJson?: ExtendedPackageJSON;
+  packageJson?: BackstagePackageJson;
   outputs: Set<Output>;
   minify?: boolean;
-  useApiExtractor?: boolean;
+  workspacePackages: BackstagePackage[];
 };

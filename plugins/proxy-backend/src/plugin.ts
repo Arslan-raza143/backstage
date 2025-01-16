@@ -19,39 +19,40 @@ import {
   createBackendPlugin,
   coreServices,
 } from '@backstage/backend-plugin-api';
-import { createRouter } from './service/router';
+import { createRouterInternal } from './service/router';
+import { proxyEndpointsExtensionPoint } from '@backstage/plugin-proxy-node/alpha';
 
 /**
  * The proxy backend plugin.
  *
- * @alpha
+ * @public
  */
-export const proxyPlugin = createBackendPlugin(
-  (options?: {
-    skipInvalidProxies?: boolean;
-    reviveConsumedRequestBodies?: boolean;
-  }) => ({
-    pluginId: 'proxy',
-    register(env) {
-      env.registerInit({
-        deps: {
-          config: coreServices.config,
-          discovery: coreServices.discovery,
-          logger: coreServices.logger,
-          httpRouter: coreServices.httpRouter,
-        },
-        async init({ config, discovery, logger, httpRouter }) {
-          httpRouter.use(
-            await createRouter({
-              config,
-              discovery,
-              logger: loggerToWinstonLogger(logger),
-              skipInvalidProxies: options?.skipInvalidProxies,
-              reviveConsumedRequestBodies: options?.reviveConsumedRequestBodies,
-            }),
-          );
-        },
-      });
-    },
-  }),
-);
+export const proxyPlugin = createBackendPlugin({
+  pluginId: 'proxy',
+  register(env) {
+    const additionalEndpoints = {};
+
+    env.registerExtensionPoint(proxyEndpointsExtensionPoint, {
+      addProxyEndpoints(endpoints) {
+        Object.assign(additionalEndpoints, endpoints);
+      },
+    });
+    env.registerInit({
+      deps: {
+        config: coreServices.rootConfig,
+        discovery: coreServices.discovery,
+        logger: coreServices.logger,
+        httpRouter: coreServices.httpRouter,
+      },
+      async init({ config, discovery, logger, httpRouter }) {
+        await createRouterInternal({
+          config,
+          discovery,
+          logger: loggerToWinstonLogger(logger),
+          httpRouterService: httpRouter,
+          additionalEndpoints,
+        });
+      },
+    });
+  },
+});

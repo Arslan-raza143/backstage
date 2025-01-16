@@ -14,70 +14,58 @@
  * limitations under the License.
  */
 
-import { getVoidLogger } from '@backstage/backend-common';
-import { coreServices } from '@backstage/backend-plugin-api';
-import { startTestBackend } from '@backstage/backend-test-utils';
-import { ConfigReader } from '@backstage/config';
-import { eventsExtensionPoint } from '@backstage/plugin-events-node/alpha';
-import { TestEventBroker } from '@backstage/plugin-events-backend-test-utils';
+import { createServiceFactory } from '@backstage/backend-plugin-api';
+import { mockServices, startTestBackend } from '@backstage/backend-test-utils';
+import { eventsServiceRef } from '@backstage/plugin-events-node';
+import { TestEventsService } from '@backstage/plugin-events-backend-test-utils';
 import { eventsModuleAwsSqsConsumingEventPublisher } from './eventsModuleAwsSqsConsumingEventPublisher';
-import { AwsSqsConsumingEventPublisher } from '../publisher/AwsSqsConsumingEventPublisher';
 
 describe('eventsModuleAwsSqsConsumingEventPublisher', () => {
   it('should be correctly wired and set up', async () => {
-    const config = new ConfigReader({
-      events: {
-        modules: {
-          awsSqs: {
-            awsSqsConsumingEventPublisher: {
-              topics: {
-                fake1: {
-                  queue: {
-                    region: 'eu-west-1',
-                    url: 'https://fake1.queue.url',
-                  },
-                },
-                fake2: {
-                  queue: {
-                    region: 'us-east-1',
-                    url: 'https://fake2.queue.url',
+    const events = new TestEventsService();
+    const eventsServiceFactory = createServiceFactory({
+      service: eventsServiceRef,
+      deps: {},
+      async factory({}) {
+        return events;
+      },
+    });
+
+    const scheduler = mockServices.scheduler.mock();
+
+    await startTestBackend({
+      features: [
+        eventsServiceFactory,
+        eventsModuleAwsSqsConsumingEventPublisher,
+        mockServices.rootConfig.factory({
+          data: {
+            events: {
+              modules: {
+                awsSqs: {
+                  awsSqsConsumingEventPublisher: {
+                    topics: {
+                      fake1: {
+                        queue: {
+                          region: 'eu-west-1',
+                          url: 'https://fake1.queue.url',
+                        },
+                      },
+                      fake2: {
+                        queue: {
+                          region: 'us-east-1',
+                          url: 'https://fake2.queue.url',
+                        },
+                      },
+                    },
                   },
                 },
               },
             },
           },
-        },
-      },
-    });
-
-    let addedPublishers: AwsSqsConsumingEventPublisher[] | undefined;
-    const extensionPoint = {
-      addPublishers: (publishers: any) => {
-        addedPublishers = publishers;
-      },
-    };
-
-    const scheduler = {
-      scheduleTask: jest.fn(),
-    };
-
-    await startTestBackend({
-      extensionPoints: [[eventsExtensionPoint, extensionPoint]],
-      services: [
-        [coreServices.config, config],
-        [coreServices.logger, getVoidLogger()],
-        [coreServices.scheduler, scheduler],
+        }),
+        scheduler.factory,
       ],
-      features: [eventsModuleAwsSqsConsumingEventPublisher()],
     });
-
-    expect(addedPublishers).not.toBeUndefined();
-    expect(addedPublishers!.length).toEqual(2);
-
-    const eventBroker = new TestEventBroker();
-    await Promise.all(
-      addedPublishers!.map(publisher => publisher.setEventBroker(eventBroker)),
-    );
 
     // publisher.connect(..) was causing the polling for events to be scheduled
     expect(scheduler.scheduleTask).toHaveBeenCalledWith(

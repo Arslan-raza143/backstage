@@ -14,16 +14,21 @@
  * limitations under the License.
  */
 
-import { ContainerRunner, UrlReader } from '@backstage/backend-common';
+import { ContainerRunner } from '@backstage/backend-common';
 import { JsonObject } from '@backstage/types';
 import { InputError } from '@backstage/errors';
 import { ScmIntegrations } from '@backstage/integration';
 import fs from 'fs-extra';
-import { fetchContents } from '@backstage/plugin-scaffolder-backend';
-import { createTemplateAction } from '@backstage/plugin-scaffolder-node';
+import {
+  createTemplateAction,
+  fetchContents,
+} from '@backstage/plugin-scaffolder-node';
 
 import { resolve as resolvePath } from 'path';
 import { RailsNewRunner } from './railsNewRunner';
+import { PassThrough } from 'stream';
+import { examples } from './index.examples';
+import { UrlReaderService } from '@backstage/backend-plugin-api';
 
 /**
  * Creates the `fetch:rails` Scaffolder action.
@@ -36,9 +41,9 @@ import { RailsNewRunner } from './railsNewRunner';
  * @public
  */
 export function createFetchRailsAction(options: {
-  reader: UrlReader;
+  reader: UrlReaderService;
   integrations: ScmIntegrations;
-  containerRunner: ContainerRunner;
+  containerRunner?: ContainerRunner;
   /** A list of image names that are allowed to be passed as imageName input */
   allowedImageNames?: string[];
 }) {
@@ -53,6 +58,7 @@ export function createFetchRailsAction(options: {
     id: 'fetch:rails',
     description:
       'Downloads a template from the given `url` into the workspace, and runs a rails new generator on it.',
+    examples,
     schema: {
       input: {
         type: 'object',
@@ -213,10 +219,15 @@ export function createFetchRailsAction(options: {
         throw new Error(`Image ${imageName} is not allowed`);
       }
 
+      const logStream = new PassThrough();
+      logStream.on('data', chunk => {
+        ctx.logger.info(chunk.toString());
+      });
+
       // Will execute the template in ./template and put the result in ./result
       await templateRunner.run({
         workspacePath: workDir,
-        logStream: ctx.logStream,
+        logStream,
         values: { ...ctx.input.values, imageName },
       });
 

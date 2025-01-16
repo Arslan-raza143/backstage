@@ -14,15 +14,18 @@
  * limitations under the License.
  */
 
-import React, { ComponentType, useCallback, useState } from 'react';
+import React, {
+  ComponentType,
+  useCallback,
+  useState,
+  PropsWithChildren,
+} from 'react';
 
-import {
-  Grid,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  MenuItem,
-} from '@material-ui/core';
+import Grid from '@material-ui/core/Grid';
+import ListItem from '@material-ui/core/ListItem';
+import ListItemIcon from '@material-ui/core/ListItemIcon';
+import ListItemText from '@material-ui/core/ListItemText';
+import MenuItem from '@material-ui/core/MenuItem';
 import DocsIcon from '@material-ui/icons/InsertDriveFile';
 
 import { JsonValue } from '@backstage/types';
@@ -72,7 +75,7 @@ export default {
   title: 'Plugins/Search/SearchResultGroup',
   component: SearchResultGroup,
   decorators: [
-    (Story: ComponentType<{}>) =>
+    (Story: ComponentType<PropsWithChildren<{}>>) =>
       wrapInTestApp(
         <TestApiProvider apis={[[searchApiRef, searchApiMock]]}>
           <Grid container direction="row">

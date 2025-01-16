@@ -16,43 +16,12 @@
 
 import { CatalogApi } from '@backstage/catalog-client';
 import { createTemplateAction } from '@backstage/plugin-scaffolder-node';
-import yaml from 'yaml';
 import { z } from 'zod';
+import { parseEntityRef, stringifyEntityRef } from '@backstage/catalog-model';
+import { examples } from './fetch.examples';
+import { AuthService } from '@backstage/backend-plugin-api';
 
 const id = 'catalog:fetch';
-
-const examples = [
-  {
-    description: 'Fetch entity by reference',
-    example: yaml.stringify({
-      steps: [
-        {
-          action: id,
-          id: 'fetch',
-          name: 'Fetch catalog entity',
-          input: {
-            entityRef: 'component:default/name',
-          },
-        },
-      ],
-    }),
-  },
-  {
-    description: 'Fetch multiple entities by referencse',
-    example: yaml.stringify({
-      steps: [
-        {
-          action: id,
-          id: 'fetchMultiple',
-          name: 'Fetch catalog entities',
-          input: {
-            entityRefs: ['component:default/name'],
-          },
-        },
-      ],
-    }),
-  },
-];
 
 /**
  * Returns entity or entities from the catalog by entity reference(s).
@@ -61,14 +30,16 @@ const examples = [
  */
 export function createFetchCatalogEntityAction(options: {
   catalogClient: CatalogApi;
+  auth?: AuthService;
 }) {
-  const { catalogClient } = options;
+  const { catalogClient, auth } = options;
 
   return createTemplateAction({
     id,
     description:
       'Returns entity or entities from the catalog by entity reference(s)',
     examples,
+    supportsDryRun: true,
     schema: {
       input: z.object({
         entityRef: z
@@ -86,6 +57,10 @@ export function createFetchCatalogEntityAction(options: {
             description:
               'Allow the entity or entities to optionally exist. Default: false',
           })
+          .optional(),
+        defaultKind: z.string({ description: 'The default kind' }).optional(),
+        defaultNamespace: z
+          .string({ description: 'The default namespace' })
           .optional(),
       }),
       output: z.object({
@@ -106,7 +81,8 @@ export function createFetchCatalogEntityAction(options: {
       }),
     },
     async handler(ctx) {
-      const { entityRef, entityRefs, optional } = ctx.input;
+      const { entityRef, entityRefs, optional, defaultKind, defaultNamespace } =
+        ctx.input;
       if (!entityRef && !entityRefs) {
         if (optional) {
           return;
@@ -114,10 +90,20 @@ export function createFetchCatalogEntityAction(options: {
         throw new Error('Missing entity reference or references');
       }
 
+      const { token } = (await auth?.getPluginRequestToken({
+        onBehalfOf: await ctx.getInitiatorCredentials(),
+        targetPluginId: 'catalog',
+      })) ?? { token: ctx.secrets?.backstageToken };
+
       if (entityRef) {
-        const entity = await catalogClient.getEntityByRef(entityRef, {
-          token: ctx.secrets?.backstageToken,
-        });
+        const entity = await catalogClient.getEntityByRef(
+          stringifyEntityRef(
+            parseEntityRef(entityRef, { defaultKind, defaultNamespace }),
+          ),
+          {
+            token,
+          },
+        );
 
         if (!entity && !optional) {
           throw new Error(`Entity ${entityRef} not found`);
@@ -127,9 +113,15 @@ export function createFetchCatalogEntityAction(options: {
 
       if (entityRefs) {
         const entities = await catalogClient.getEntitiesByRefs(
-          { entityRefs },
           {
-            token: ctx.secrets?.backstageToken,
+            entityRefs: entityRefs.map(ref =>
+              stringifyEntityRef(
+                parseEntityRef(ref, { defaultKind, defaultNamespace }),
+              ),
+            ),
+          },
+          {
+            token,
           },
         );
 

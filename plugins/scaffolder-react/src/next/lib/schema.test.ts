@@ -411,4 +411,191 @@ describe('extractSchemaFromStep', () => {
       uiSchema: expectedUiSchema,
     });
   });
+
+  it('doesnt override existing uiSchema with things from dependencies', () => {
+    const inputSchema: JsonObject = {
+      type: 'object',
+      title:
+        "Field 2 depend on field 1, field 1 is a radio button but it's visible as a field",
+      required: ['exampleField1'],
+      properties: {
+        exampleField0: {
+          title: 'Radio button that is not a dependency',
+          type: 'string',
+          enum: ['foo', 'bar'],
+          'ui:widget': 'radio',
+        },
+        exampleField1: {
+          title: 'Radio button input that is a dependency',
+          type: 'string',
+          enum: ['visible', 'hidden'],
+          'ui:widget': 'radio',
+        },
+      },
+      dependencies: {
+        exampleField1: {
+          oneOf: [
+            {
+              properties: {
+                exampleField1: {
+                  enum: ['visible'],
+                },
+                exampleField2: {
+                  title: 'FIELD 2',
+                  type: 'string',
+                  description: 'Explanation',
+                },
+              },
+            },
+            {
+              properties: {
+                exampleField1: {
+                  enum: ['hidden'],
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const expectedSchema = {
+      type: 'object',
+      title:
+        "Field 2 depend on field 1, field 1 is a radio button but it's visible as a field",
+      required: ['exampleField1'],
+      properties: {
+        exampleField0: {
+          title: 'Radio button that is not a dependency',
+          type: 'string',
+          enum: ['foo', 'bar'],
+        },
+        exampleField1: {
+          title: 'Radio button input that is a dependency',
+          type: 'string',
+          enum: ['visible', 'hidden'],
+        },
+      },
+      dependencies: {
+        exampleField1: {
+          oneOf: [
+            {
+              properties: {
+                exampleField1: {
+                  enum: ['visible'],
+                },
+                exampleField2: {
+                  title: 'FIELD 2',
+                  type: 'string',
+                  description: 'Explanation',
+                },
+              },
+            },
+            {
+              properties: {
+                exampleField1: {
+                  enum: ['hidden'],
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const expectedUiSchema = {
+      exampleField0: {
+        'ui:widget': 'radio',
+      },
+      exampleField1: {
+        'ui:widget': 'radio',
+      },
+      exampleField2: {},
+    };
+
+    expect(extractSchemaFromStep(inputSchema)).toEqual({
+      schema: expectedSchema,
+      uiSchema: expectedUiSchema,
+    });
+  });
+
+  it('transforms conditional schema', () => {
+    const inputSchema: JsonObject = {
+      type: 'object',
+      properties: {
+        flag: {
+          type: 'boolean',
+        },
+      },
+      if: {
+        properties: {
+          flag: {
+            const: true,
+          },
+        },
+      },
+      then: {
+        properties: {
+          user: {
+            type: 'string',
+            'ui:field': 'EntityPicker',
+            'ui:options': {
+              catalogFilter: [{ kind: 'User' }],
+            },
+          },
+        },
+      },
+      else: {
+        properties: {
+          email: {
+            type: 'string',
+          },
+        },
+      },
+    };
+    const expectedSchema = {
+      type: 'object',
+      properties: {
+        flag: {
+          type: 'boolean',
+        },
+      },
+      if: {
+        properties: {
+          flag: {
+            const: true,
+          },
+        },
+      },
+      then: {
+        properties: {
+          user: {
+            type: 'string',
+          },
+        },
+      },
+      else: {
+        properties: {
+          email: {
+            type: 'string',
+          },
+        },
+      },
+    };
+    const expectedUiSchema = {
+      flag: {},
+      user: {
+        'ui:field': 'EntityPicker',
+        'ui:options': {
+          catalogFilter: [{ kind: 'User' }],
+        },
+      },
+      email: {},
+    };
+
+    expect(extractSchemaFromStep(inputSchema)).toEqual({
+      schema: expectedSchema,
+      uiSchema: expectedUiSchema,
+    });
+  });
 });

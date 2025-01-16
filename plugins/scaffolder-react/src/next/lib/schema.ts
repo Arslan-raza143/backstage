@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import { JsonObject } from '@backstage/types';
+import { stringify, parse } from 'flatted';
 import { FieldValidation, UiSchema } from '@rjsf/utils';
 
 function isObject(value: unknown): value is JsonObject {
@@ -25,7 +26,16 @@ function extractUiSchema(schema: JsonObject, uiSchema: JsonObject) {
     return;
   }
 
-  const { properties, items, anyOf, oneOf, allOf, dependencies } = schema;
+  const {
+    properties,
+    items,
+    anyOf,
+    oneOf,
+    allOf,
+    dependencies,
+    then,
+    else: _else,
+  } = schema;
 
   for (const propName in schema) {
     if (!schema.hasOwnProperty(propName)) {
@@ -48,9 +58,13 @@ function extractUiSchema(schema: JsonObject, uiSchema: JsonObject) {
       if (!isObject(schemaNode)) {
         continue;
       }
-      const innerUiSchema = {};
-      uiSchema[propName] = innerUiSchema;
-      extractUiSchema(schemaNode, innerUiSchema);
+
+      if (!isObject(uiSchema[propName])) {
+        const innerUiSchema = {};
+        uiSchema[propName] = innerUiSchema;
+      }
+
+      extractUiSchema(schemaNode, uiSchema[propName] as JsonObject);
     }
   }
 
@@ -96,6 +110,14 @@ function extractUiSchema(schema: JsonObject, uiSchema: JsonObject) {
       extractUiSchema(schemaNode, uiSchema);
     }
   }
+
+  if (isObject(then)) {
+    extractUiSchema(then, uiSchema);
+  }
+
+  if (isObject(_else)) {
+    extractUiSchema(_else, uiSchema);
+  }
 }
 
 /**
@@ -106,7 +128,7 @@ export const extractSchemaFromStep = (
   inputStep: JsonObject,
 ): { uiSchema: UiSchema; schema: JsonObject } => {
   const uiSchema: UiSchema = {};
-  const returnSchema: JsonObject = JSON.parse(JSON.stringify(inputStep));
+  const returnSchema: JsonObject = parse(stringify(inputStep));
   extractUiSchema(returnSchema, uiSchema);
   return { uiSchema, schema: returnSchema };
 };

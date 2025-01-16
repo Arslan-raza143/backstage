@@ -13,11 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import { Config } from '@backstage/config';
-import { UrlReader } from '@backstage/backend-common';
 import { ScmIntegrations } from '@backstage/integration';
-import { createFetchPlainAction } from '@backstage/plugin-scaffolder-backend';
-import { createTemplateAction } from '@backstage/plugin-scaffolder-node';
+import {
+  createTemplateAction,
+  fetchContents,
+} from '@backstage/plugin-scaffolder-node';
 import { InputError, ConflictError } from '@backstage/errors';
 import { NodeHtmlMarkdown } from 'node-html-markdown';
 import fs from 'fs-extra';
@@ -28,19 +30,21 @@ import {
   fetchConfluence,
   getAndWriteAttachments,
   createConfluenceVariables,
+  getConfluenceConfig,
 } from './helpers';
+import { examples } from './confluenceToMarkdown.examples';
+import { UrlReaderService } from '@backstage/backend-plugin-api';
 
 /**
  * @public
  */
 
 export const createConfluenceToMarkdownAction = (options: {
-  reader: UrlReader;
+  reader: UrlReaderService;
   integrations: ScmIntegrations;
   config: Config;
 }) => {
   const { config, reader, integrations } = options;
-  const fetchPlainAction = createFetchPlainAction({ reader, integrations });
   type Obj = {
     [key: string]: string;
   };
@@ -50,6 +54,8 @@ export const createConfluenceToMarkdownAction = (options: {
     repoUrl: string;
   }>({
     id: 'confluence:transform:markdown',
+    description: 'Transforms Confluence content to Markdown',
+    examples,
     schema: {
       input: {
         properties: {
@@ -57,7 +63,7 @@ export const createConfluenceToMarkdownAction = (options: {
             type: 'array',
             title: 'Confluence URL',
             description:
-              'Paste your confluence url. Ensure it follows this format: https://{confluence+base+url}/display/{spacekey}/{page+title}',
+              'Paste your Confluence url. Ensure it follows this format: https://{confluence+base+url}/display/{spacekey}/{page+title} or https://{confluence+base+url}/spaces/{spacekey}/pages/1234567/{page+title} for Confluence Cloud',
             items: {
               type: 'string',
               default: 'Confluence URL',
@@ -73,6 +79,7 @@ export const createConfluenceToMarkdownAction = (options: {
       },
     },
     async handler(ctx) {
+      const confluenceConfig = getConfluenceConfig(config);
       const { confluenceUrls, repoUrl } = ctx.input;
       const parsedRepoUrl = parseGitUrl(repoUrl);
       const filePathToMkdocs = parsedRepoUrl.filepath.substring(
@@ -80,37 +87,38 @@ export const createConfluenceToMarkdownAction = (options: {
         parsedRepoUrl.filepath.lastIndexOf('/') + 1,
       );
       const dirPath = ctx.workspacePath;
+      const repoFileDir = `${dirPath}/${parsedRepoUrl.filepath}`;
       let productArray: string[][] = [];
 
       ctx.logger.info(`Fetching the mkdocs.yml catalog from ${repoUrl}`);
 
       // This grabs the files from Github
-      const repoFileDir = `${dirPath}/${parsedRepoUrl.filepath}`;
-      await fetchPlainAction.handler({
-        ...ctx,
-        input: {
-          url: `https://${parsedRepoUrl.resource}/${parsedRepoUrl.owner}/${parsedRepoUrl.name}`,
-          targetPath: dirPath,
-        },
+      await fetchContents({
+        reader,
+        integrations,
+        baseUrl: ctx.templateInfo?.baseUrl,
+        fetchUrl: `https://${parsedRepoUrl.resource}/${parsedRepoUrl.owner}/${parsedRepoUrl.name}`,
+        outputPath: ctx.workspacePath,
       });
 
       for (const url of confluenceUrls) {
         const { spacekey, title, titleWithSpaces } =
-          await createConfluenceVariables(url);
+          createConfluenceVariables(url);
         // This calls confluence to get the page html and page id
+        ctx.logger.info(`Fetching the Confluence content for ${url}`);
         const getConfluenceDoc = await fetchConfluence(
           `/rest/api/content?title=${title}&spaceKey=${spacekey}&expand=body.export_view`,
-          config,
+          confluenceConfig,
         );
         if (getConfluenceDoc.results.length === 0) {
           throw new InputError(
             `Could not find document ${url}. Please check your input.`,
           );
         }
-        // This gets attachements for the confluence page if they exist
+        // This gets attachments for the confluence page if they exist
         const getDocAttachments = await fetchConfluence(
           `/rest/api/content/${getConfluenceDoc.results[0].id}/child/attachment`,
-          config,
+          confluenceConfig,
         );
 
         if (getDocAttachments.results.length) {
@@ -120,7 +128,7 @@ export const createConfluenceToMarkdownAction = (options: {
           productArray = await getAndWriteAttachments(
             getDocAttachments,
             dirPath,
-            config,
+            confluenceConfig,
             filePathToMkdocs,
           );
         }

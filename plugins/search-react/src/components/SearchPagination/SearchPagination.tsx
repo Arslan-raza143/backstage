@@ -21,7 +21,7 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { TablePagination } from '@material-ui/core';
+import TablePagination from '@material-ui/core/TablePagination';
 import { useSearch } from '../../context';
 
 const encodePageCursor = (pageCursor: number): string => {
@@ -176,7 +176,7 @@ export const SearchPaginationBase = (props: SearchPaginationBaseProps) => {
 export type SearchPaginationProps = Omit<
   SearchPaginationBaseProps,
   | 'pageLimit'
-  | 'onPageLimitChange'
+  | 'onLimitChange'
   | 'pageCursor'
   | 'onPageCursorChange'
   | 'hasNextPage'
@@ -191,12 +191,20 @@ export const SearchPagination = (props: SearchPaginationProps) => {
   const { pageLimit, setPageLimit, pageCursor, setPageCursor, fetchNextPage } =
     useSearch();
 
+  const handlePageLimitChange = useCallback(
+    (newPageLimit: number) => {
+      setPageLimit(newPageLimit);
+      setPageCursor(undefined);
+    },
+    [setPageLimit, setPageCursor],
+  );
+
   return (
     <SearchPaginationBase
       {...props}
       hasNextPage={!!fetchNextPage}
       limit={pageLimit}
-      onLimitChange={setPageLimit}
+      onLimitChange={handlePageLimitChange}
       cursor={pageCursor}
       onCursorChange={setPageCursor}
     />

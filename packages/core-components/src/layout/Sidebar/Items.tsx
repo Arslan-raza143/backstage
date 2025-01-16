@@ -13,8 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { IconComponent, useElementFilter } from '@backstage/core-plugin-api';
-import { BackstageTheme } from '@backstage/theme';
+
+import {
+  IconComponent,
+  useAnalytics,
+  useElementFilter,
+} from '@backstage/core-plugin-api';
 import Badge from '@material-ui/core/Badge';
 import Box from '@material-ui/core/Box';
 import { makeStyles, styled, Theme } from '@material-ui/core/styles';
@@ -30,7 +34,7 @@ import ArrowDropUp from '@material-ui/icons/ArrowDropUp';
 import ArrowRightIcon from '@material-ui/icons/ArrowRight';
 import SearchIcon from '@material-ui/icons/Search';
 import classnames from 'classnames';
-import { Location } from 'history';
+import type { Location } from 'history';
 import React, {
   ComponentProps,
   ComponentType,
@@ -38,6 +42,7 @@ import React, {
   forwardRef,
   KeyboardEventHandler,
   ReactNode,
+  useCallback,
   useContext,
   useMemo,
   useState,
@@ -85,7 +90,7 @@ export type SidebarItemClassKey =
   | 'selected';
 
 const makeSidebarStyles = (sidebarConfig: SidebarConfig) =>
-  makeStyles<BackstageTheme>(
+  makeStyles(
     theme => ({
       root: {
         color: theme.palette.navigation.color,
@@ -264,6 +269,8 @@ type SidebarItemBaseProps = {
   hasSubmenu?: boolean;
   disableHighlight?: boolean;
   className?: string;
+  noTrack?: boolean;
+  onClick?: (ev: React.MouseEvent) => void;
 };
 
 type SidebarItemButtonProps = SidebarItemBaseProps & {
@@ -305,7 +312,11 @@ const sidebarSubmenuType = React.createElement(SidebarSubmenu).type;
 //               properly yet, matching for example /foobar with /foo.
 export const WorkaroundNavLink = React.forwardRef<
   HTMLAnchorElement,
-  NavLinkProps & { activeStyle?: CSSProperties; activeClassName?: string }
+  NavLinkProps & {
+    children?: ReactNode;
+    activeStyle?: CSSProperties;
+    activeClassName?: string;
+  }
 >(function WorkaroundNavLinkWithRef(
   {
     to,
@@ -344,7 +355,7 @@ export const WorkaroundNavLink = React.forwardRef<
       aria-current={ariaCurrent}
       style={{ ...style, ...(isActive ? activeStyle : undefined) }}
       className={classnames([
-        className,
+        typeof className !== 'function' ? className : undefined,
         isActive ? activeClassName : undefined,
       ])}
     />
@@ -354,7 +365,10 @@ export const WorkaroundNavLink = React.forwardRef<
 /**
  * Common component used by SidebarItem & SidebarItemWithSubmenu
  */
-const SidebarItemBase = forwardRef<any, SidebarItemProps>((props, ref) => {
+const SidebarItemBase = forwardRef<
+  any,
+  SidebarItemProps & { children: ReactNode }
+>((props, ref) => {
   const {
     icon: Icon,
     text,
@@ -362,6 +376,7 @@ const SidebarItemBase = forwardRef<any, SidebarItemProps>((props, ref) => {
     hasSubmenu = false,
     disableHighlight = false,
     onClick,
+    noTrack,
     children,
     className,
     ...navLinkProps
@@ -403,7 +418,11 @@ const SidebarItemBase = forwardRef<any, SidebarItemProps>((props, ref) => {
         {itemIcon}
       </Box>
       {text && (
-        <Typography variant="subtitle2" className={classes.label}>
+        <Typography
+          variant="subtitle2"
+          component="span"
+          className={classes.label}
+        >
           {text}
         </Typography>
       )}
@@ -424,9 +443,33 @@ const SidebarItemBase = forwardRef<any, SidebarItemProps>((props, ref) => {
     ),
   };
 
+  const analyticsApi = useAnalytics();
+  const { pathname: to } = useResolvedPath(
+    !isButtonItem(props) && props.to ? props.to : '',
+  );
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
+      if (!noTrack) {
+        const action = 'click';
+        const subject = text ?? 'Sidebar Item';
+        const options = to ? { attributes: { to } } : undefined;
+        analyticsApi.captureEvent(action, subject, options);
+      }
+      onClick?.(event);
+    },
+    [analyticsApi, text, to, noTrack, onClick],
+  );
+
   if (isButtonItem(props)) {
     return (
-      <Button role="button" aria-label={text} {...childProps} ref={ref}>
+      <Button
+        role="button"
+        aria-label={text}
+        {...childProps}
+        ref={ref}
+        onClick={handleClick}
+      >
         {content}
       </Button>
     );
@@ -440,6 +483,7 @@ const SidebarItemBase = forwardRef<any, SidebarItemProps>((props, ref) => {
       ref={ref}
       aria-label={text ? text : props.to}
       {...navLinkProps}
+      onClick={handleClick}
     >
       {content}
     </WorkaroundNavLink>
@@ -457,7 +501,7 @@ const SidebarItemWithSubmenu = ({
   const [isHoveredOn, setIsHoveredOn] = useState(false);
   const location = useLocation();
   const isActive = useLocationMatch(children, location);
-  const isSmallScreen = useMediaQuery<BackstageTheme>((theme: BackstageTheme) =>
+  const isSmallScreen = useMediaQuery((theme: Theme) =>
     theme.breakpoints.down('sm'),
   );
 
@@ -516,7 +560,10 @@ const SidebarItemWithSubmenu = ({
  * @remarks
  * If children contain a `SidebarSubmenu` component the `SidebarItem` will have a expandable submenu
  */
-export const SidebarItem = forwardRef<any, SidebarItemProps>((props, ref) => {
+export const SidebarItem = forwardRef<
+  any,
+  SidebarItemProps & { children: ReactNode }
+>((props, ref) => {
   // Filter children for SidebarSubmenu components
   const [submenu] = useElementFilter(props.children, elements =>
     // Directly comparing child.type with SidebarSubmenu will not work with in
@@ -644,7 +691,7 @@ const styledScrollbar = (theme: Theme): CreateCSSProperties => ({
     borderRadius: '5px',
   },
   '&::-webkit-scrollbar-thumb': {
-    backgroundColor: theme.palette.text.hint,
+    backgroundColor: theme.palette.text.secondary,
     borderRadius: '5px',
   },
 });
@@ -654,8 +701,7 @@ export const SidebarScrollWrapper = styled('div')(({ theme }) => {
   return {
     flex: '0 1 auto',
     overflowX: 'hidden',
-    // 5px space to the right of the scrollbar
-    width: 'calc(100% - 5px)',
+    width: '100%',
     // Display at least one item in the container
     // Question: Can this be a config/theme variable - if so, which? :/
     minHeight: '48px',
@@ -679,7 +725,7 @@ export const SidebarExpandButton = () => {
   const { sidebarConfig } = useContext(SidebarConfigContext);
   const classes = useMemoStyles(sidebarConfig);
   const { isOpen, setOpen } = useSidebarOpenState();
-  const isSmallScreen = useMediaQuery<BackstageTheme>(
+  const isSmallScreen = useMediaQuery<Theme>(
     theme => theme.breakpoints.down('md'),
     { noSsr: true },
   );

@@ -14,10 +14,19 @@
  * limitations under the License.
  */
 
-import { UrlReader, resolveSafeChildPath } from '@backstage/backend-common';
+import {
+  resolveSafeChildPath,
+  UrlReaderService,
+} from '@backstage/backend-plugin-api';
 import { ScmIntegrations } from '@backstage/integration';
-import { fetchContents } from './helpers';
-import { createTemplateAction } from '@backstage/plugin-scaffolder-node';
+import { examples } from './plain.examples';
+
+import {
+  createTemplateAction,
+  fetchContents,
+} from '@backstage/plugin-scaffolder-node';
+
+export const ACTION_ID = 'fetch:plain';
 
 /**
  * Downloads content and places it in the workspace, or optionally
@@ -25,13 +34,18 @@ import { createTemplateAction } from '@backstage/plugin-scaffolder-node';
  * @public
  */
 export function createFetchPlainAction(options: {
-  reader: UrlReader;
+  reader: UrlReaderService;
   integrations: ScmIntegrations;
 }) {
   const { reader, integrations } = options;
 
-  return createTemplateAction<{ url: string; targetPath?: string }>({
-    id: 'fetch:plain',
+  return createTemplateAction<{
+    url: string;
+    targetPath?: string;
+    token?: string;
+  }>({
+    id: ACTION_ID,
+    examples,
     description:
       'Downloads content and places it in the workspace, or optionally in a subdirectory specified by the `targetPath` input option.',
     schema: {
@@ -51,6 +65,12 @@ export function createFetchPlainAction(options: {
               'Target path within the working directory to download the contents to.',
             type: 'string',
           },
+          token: {
+            title: 'Token',
+            description:
+              'An optional token to use for authentication when reading the resources.',
+            type: 'string',
+          },
         },
       },
     },
@@ -68,6 +88,7 @@ export function createFetchPlainAction(options: {
         baseUrl: ctx.templateInfo?.baseUrl,
         fetchUrl: ctx.input.url,
         outputPath,
+        token: ctx.input.token,
       });
     },
   });

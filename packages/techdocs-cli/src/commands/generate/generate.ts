@@ -17,16 +17,11 @@
 import { resolve } from 'path';
 import { OptionValues } from 'commander';
 import fs from 'fs-extra';
-import Docker from 'dockerode';
 import {
   TechdocsGenerator,
   ParsedLocationAnnotation,
   getMkdocsYml,
 } from '@backstage/plugin-techdocs-node';
-import {
-  ContainerRunner,
-  DockerContainerRunner,
-} from '@backstage/backend-common';
 import { ConfigReader } from '@backstage/config';
 import {
   convertTechDocsRefToLocationAnnotation,
@@ -47,6 +42,7 @@ export default async function generate(opts: OptionValues) {
   const dockerImage = opts.dockerImage;
   const pullImage = opts.pull;
   const legacyCopyReadmeMdToIndexMd = opts.legacyCopyReadmeMdToIndexMd;
+  const defaultPlugins = opts.defaultPlugin;
 
   logger.info(`Using source dir ${sourceDir}`);
   logger.info(`Will output generated files in ${outputDir}`);
@@ -68,18 +64,11 @@ export default async function generate(opts: OptionValues) {
         mkdocs: {
           legacyCopyReadmeMdToIndexMd,
           omitTechdocsCorePlugin,
+          defaultPlugins,
         },
       },
     },
   });
-
-  // Docker client (conditionally) used by the generators, based on techdocs.generators config.
-  let containerRunner: ContainerRunner | undefined;
-
-  if (opts.docker) {
-    const dockerClient = new Docker();
-    containerRunner = new DockerContainerRunner({ dockerClient });
-  }
 
   let parsedLocationAnnotation = {} as ParsedLocationAnnotation;
   if (opts.techdocsRef) {
@@ -95,7 +84,6 @@ export default async function generate(opts: OptionValues) {
   // Generate docs using @backstage/plugin-techdocs-node
   const techdocsGenerator = await TechdocsGenerator.fromConfig(config, {
     logger,
-    containerRunner,
   });
 
   logger.info('Generating documentation...');
@@ -112,6 +100,7 @@ export default async function generate(opts: OptionValues) {
     etag: opts.etag,
     logStream: getLogStream(logger),
     siteOptions: { name: opts.siteName },
+    runAsDefaultUser: opts.runAsDefaultUser,
   });
 
   if (configIsTemporary) {

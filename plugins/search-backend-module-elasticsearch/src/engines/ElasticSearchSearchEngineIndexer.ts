@@ -17,8 +17,8 @@
 import { BatchSearchEngineIndexer } from '@backstage/plugin-search-backend-node';
 import { ElasticSearchClientWrapper } from './ElasticSearchClientWrapper';
 import { IndexableDocument } from '@backstage/plugin-search-common';
-import { Logger } from 'winston';
 import { Readable } from 'stream';
+import { LoggerService } from '@backstage/backend-plugin-api';
 
 /**
  * Options for instantiate ElasticSearchSearchEngineIndexer
@@ -29,9 +29,10 @@ export type ElasticSearchSearchEngineIndexerOptions = {
   indexPrefix: string;
   indexSeparator: string;
   alias: string;
-  logger: Logger;
+  logger: LoggerService;
   elasticSearchClientWrapper: ElasticSearchClientWrapper;
   batchSize: number;
+  skipRefresh?: boolean;
 };
 
 function duration(startTimestamp: [number, number]): string {
@@ -54,8 +55,7 @@ export class ElasticSearchSearchEngineIndexer extends BatchSearchEngineIndexer {
   private readonly indexPrefix: string;
   private readonly indexSeparator: string;
   private readonly alias: string;
-  private readonly removableAlias: string;
-  private readonly logger: Logger;
+  private readonly logger: LoggerService;
   private readonly sourceStream: Readable;
   private readonly elasticSearchClientWrapper: ElasticSearchClientWrapper;
   private configuredBatchSize: number;
@@ -72,7 +72,6 @@ export class ElasticSearchSearchEngineIndexer extends BatchSearchEngineIndexer {
     this.indexSeparator = options.indexSeparator;
     this.indexName = this.constructIndexName(`${Date.now()}`);
     this.alias = options.alias;
-    this.removableAlias = `${this.alias}_removable`;
     this.elasticSearchClientWrapper = options.elasticSearchClientWrapper;
 
     // The ES client bulk helper supports stream-based indexing, but we have to
@@ -94,7 +93,7 @@ export class ElasticSearchSearchEngineIndexer extends BatchSearchEngineIndexer {
           index: { _index: that.indexName },
         };
       },
-      refreshOnCompletion: that.indexName,
+      refreshOnCompletion: options.skipRefresh !== true,
     });
 
     // Safely catch errors thrown by the bulk helper client, e.g. HTTP timeouts
@@ -106,13 +105,13 @@ export class ElasticSearchSearchEngineIndexer extends BatchSearchEngineIndexer {
   async initialize(): Promise<void> {
     this.logger.info(`Started indexing documents for index ${this.type}`);
 
-    const aliases = await this.elasticSearchClientWrapper.getAliases({
-      aliases: [this.alias, this.removableAlias],
+    const indices = await this.elasticSearchClientWrapper.listIndices({
+      index: this.constructIndexName('*'),
     });
 
-    this.removableIndices = [
-      ...new Set(aliases.body.map((r: Record<string, any>) => r.index)),
-    ] as string[];
+    for (const key of Object.keys(indices.body)) {
+      this.removableIndices.push(key);
+    }
 
     await this.elasticSearchClientWrapper.createIndex({
       index: this.indexName,
@@ -169,14 +168,6 @@ export class ElasticSearchSearchEngineIndexer extends BatchSearchEngineIndexer {
         {
           remove: { index: this.constructIndexName('*'), alias: this.alias },
         },
-        this.removableIndices.length
-          ? {
-              add: {
-                indices: this.removableIndices,
-                alias: this.removableAlias,
-              },
-            }
-          : undefined,
         {
           add: { index: this.indexName, alias: this.alias },
         },
@@ -186,13 +177,36 @@ export class ElasticSearchSearchEngineIndexer extends BatchSearchEngineIndexer {
     // If any indices are removable, remove them. Do not bubble up this error,
     // as doing so would delete the now aliased index. Log instead.
     if (this.removableIndices.length) {
-      this.logger.info('Removing stale search indices', this.removableIndices);
-      try {
-        await this.elasticSearchClientWrapper.deleteIndex({
-          index: this.removableIndices,
-        });
-      } catch (e) {
-        this.logger.warn(`Failed to remove stale search indices: ${e}`);
+      this.logger.info('Removing stale search indices', {
+        removableIndices: this.removableIndices,
+      });
+
+      // Split the array into chunks of up to 50 indices to handle the case
+      // where we need to delete a lot of stalled indices
+      const chunks = this.removableIndices.reduce(
+        (resultArray, item, index) => {
+          const chunkIndex = Math.floor(index / 50);
+
+          if (!resultArray[chunkIndex]) {
+            resultArray[chunkIndex] = []; // start a new chunk
+          }
+
+          resultArray[chunkIndex].push(item);
+
+          return resultArray;
+        },
+        [] as string[][],
+      );
+
+      // Call deleteIndex for each chunk
+      for (const chunk of chunks) {
+        try {
+          await this.elasticSearchClientWrapper.deleteIndex({
+            index: chunk,
+          });
+        } catch (e) {
+          this.logger.warn(`Failed to remove stale search indices: ${e}`);
+        }
       }
     }
   }

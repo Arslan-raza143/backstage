@@ -30,8 +30,12 @@ As an example, we will create a component that validates whether a string is in 
 ```tsx
 //packages/app/src/scaffolder/ValidateKebabCase/ValidateKebabCaseExtension.tsx
 import React from 'react';
-import { FieldProps, FieldValidation } from '@rjsf/core';
+import { FieldExtensionComponentProps } from '@backstage/plugin-scaffolder-react';
+import type { FieldValidation } from '@rjsf/utils';
 import FormControl from '@material-ui/core/FormControl';
+import FormHelperText from '@material-ui/core/FormHelperText';
+import Input from '@material-ui/core/Input';
+import InputLabel from '@material-ui/core/InputLabel';
 /*
  This is the actual component that will get rendered in the form
 */
@@ -40,7 +44,7 @@ export const ValidateKebabCase = ({
   rawErrors,
   required,
   formData,
-}: FieldProps<string>) => {
+}: FieldExtensionComponentProps<string>) => {
   return (
     <FormControl
       margin="normal"
@@ -89,14 +93,12 @@ export const validateKebabCaseValidation = (
   then please use `scaffolderPlugin.provide` from there instead and export it part of your `plugin.ts` rather than re-using the `scaffolder.plugin`.
 */
 
-import {
-  scaffolderPlugin,
-  createScaffolderFieldExtension,
-} from '@backstage/plugin-scaffolder';
+import { scaffolderPlugin } from '@backstage/plugin-scaffolder';
+import { createScaffolderFieldExtension } from '@backstage/plugin-scaffolder-react';
 import {
   ValidateKebabCase,
   validateKebabCaseValidation,
-} from './ValidateKebabCase/ValidateKebabCaseExtension';
+} from './ValidateKebabCaseExtension';
 
 export const ValidateKebabCaseFieldExtension = scaffolderPlugin.provide(
   createScaffolderFieldExtension({
@@ -133,7 +135,7 @@ Should look something like this instead:
 
 ```tsx
 import { ValidateKebabCaseFieldExtension } from './scaffolder/ValidateKebabCase';
-import { ScaffolderFieldExtensions } from '@backstage/plugin-scaffolder';
+import { ScaffolderFieldExtensions } from '@backstage/plugin-scaffolder-react';
 
 const routes = (
   <FlatRoutes>

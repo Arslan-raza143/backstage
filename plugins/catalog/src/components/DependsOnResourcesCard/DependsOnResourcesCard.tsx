@@ -15,7 +15,11 @@
  */
 
 import { RELATION_DEPENDS_ON, ResourceEntity } from '@backstage/catalog-model';
-import { InfoCardVariants, TableColumn } from '@backstage/core-components';
+import {
+  InfoCardVariants,
+  TableColumn,
+  TableOptions,
+} from '@backstage/core-components';
 import React from 'react';
 import {
   asResourceEntities,
@@ -23,19 +27,24 @@ import {
   RelatedEntitiesCard,
   resourceEntityColumns,
 } from '../RelatedEntitiesCard';
+import { catalogTranslationRef } from '../../alpha/translation';
+import { useTranslationRef } from '@backstage/core-plugin-api/alpha';
 
 /** @public */
 export interface DependsOnResourcesCardProps {
   variant?: InfoCardVariants;
   title?: string;
   columns?: TableColumn<ResourceEntity>[];
+  tableOptions?: TableOptions;
 }
 
 export function DependsOnResourcesCard(props: DependsOnResourcesCardProps) {
+  const { t } = useTranslationRef(catalogTranslationRef);
   const {
     variant = 'gridItem',
-    title = 'Depends on resources',
+    title = t('dependsOnResourcesCard.title'),
     columns = resourceEntityColumns,
+    tableOptions = {},
   } = props;
   return (
     <RelatedEntitiesCard
@@ -44,9 +53,10 @@ export function DependsOnResourcesCard(props: DependsOnResourcesCardProps) {
       entityKind="Resource"
       relationType={RELATION_DEPENDS_ON}
       columns={columns}
-      emptyMessage="No resource is a dependency of this component"
+      emptyMessage={t('dependsOnResourcesCard.emptyMessage')}
       emptyHelpLink={componentEntityHelpLink}
       asRenderableEntities={asResourceEntities}
+      tableOptions={tableOptions}
     />
   );
 }

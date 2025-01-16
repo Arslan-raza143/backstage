@@ -32,11 +32,13 @@ export * from './components/CatalogKindHeader';
 export * from './components/CatalogTable';
 export * from './components/EntityLayout';
 export * from './components/EntityOrphanWarning';
+export * from './components/EntityRelationWarning';
 export * from './components/EntityProcessingErrorsPanel';
 export * from './components/EntitySwitch';
 export * from './components/FilteredEntityLayout';
 export * from './overridableComponents';
 export * from './components/EntityLabelsCard';
+export * from './components/CatalogSearchResultListItem';
 export {
   CatalogEntityPage,
   CatalogIndexPage,
@@ -48,6 +50,7 @@ export {
   EntityHasComponentsCard,
   EntityHasResourcesCard,
   EntityHasSubcomponentsCard,
+  EntityHasSubdomainsCard,
   EntityHasSystemsCard,
   EntityLinksCard,
   EntityLabelsCard,
@@ -70,6 +73,7 @@ export type { EntityContextMenuClassKey } from './components/EntityContextMenu';
 export type { HasComponentsCardProps } from './components/HasComponentsCard';
 export type { HasResourcesCardProps } from './components/HasResourcesCard';
 export type { HasSubcomponentsCardProps } from './components/HasSubcomponentsCard';
+export type { HasSubdomainsCardProps } from './components/HasSubdomainsCard';
 export type { HasSystemsCardProps } from './components/HasSystemsCard';
 export type { RelatedEntitiesCardProps } from './components/RelatedEntitiesCard';
 export type { CatalogSearchResultListItemProps } from './components/CatalogSearchResultListItem';

@@ -24,6 +24,7 @@ const { join: joinPath } = require('path');
  * - `tsRules`: Additional ESLint rules to apply to TypeScript
  * - `testRules`: Additional ESLint rules to apply to tests
  * - `restrictedImports`: Additional paths to add to no-restricted-imports
+ * - `restrictedImportsPattern`: Additional patterns to add to no-restricted-imports
  * - `restrictedSrcImports`: Additional paths to add to no-restricted-imports in src files
  * - `restrictedTestImports`: Additional paths to add to no-restricted-imports in test files
  * - `restrictedSyntax`: Additional patterns to add to no-restricted-syntax
@@ -44,6 +45,7 @@ function createConfig(dir, extraConfig = {}) {
     testRules,
 
     restrictedImports,
+    restrictedImportPatterns,
     restrictedSrcImports,
     restrictedTestImports,
     restrictedSyntax,
@@ -64,7 +66,7 @@ function createConfig(dir, extraConfig = {}) {
       ...(extraExtends ?? []),
     ],
     parser: '@typescript-eslint/parser',
-    plugins: ['import', ...(plugins ?? [])],
+    plugins: ['import', 'unused-imports', 'deprecation', ...(plugins ?? [])],
     env: {
       jest: true,
       ...env,
@@ -82,6 +84,7 @@ function createConfig(dir, extraConfig = {}) {
       ...(ignorePatterns ?? []),
     ],
     rules: {
+      'deprecation/deprecation': 'off',
       'no-shadow': 'off',
       'no-redeclare': 'off',
       '@typescript-eslint/no-shadow': 'error',
@@ -114,6 +117,7 @@ function createConfig(dir, extraConfig = {}) {
             '*.test*',
             '**/__testUtils__/**',
             '**/__mocks__/**',
+            ...(restrictedImportPatterns ?? []),
           ],
         },
       ],
@@ -162,6 +166,23 @@ function createConfig(dir, extraConfig = {}) {
           ],
         },
       },
+      {
+        files: ['**/src/**/generated/**/*.ts'],
+        rules: {
+          ...tsRules,
+          'no-unused-vars': 'off',
+          'unused-imports/no-unused-imports': 'error',
+          'unused-imports/no-unused-vars': [
+            'warn',
+            {
+              vars: 'all',
+              varsIgnorePattern: '^_',
+              args: 'none',
+              argsIgnorePattern: '^_',
+            },
+          ],
+        },
+      },
       ...(overrides ?? []),
     ],
   };
@@ -180,6 +201,7 @@ function createConfigForRole(dir, role, extraConfig = {}) {
     case 'frontend':
     case 'frontend-plugin':
     case 'frontend-plugin-module':
+    case 'frontend-dynamic-container':
       return createConfig(dir, {
         ...extraConfig,
         extends: [
@@ -200,7 +222,7 @@ function createConfigForRole(dir, role, extraConfig = {}) {
         },
         restrictedImports: [
           {
-            // Importing the entire MUI icons packages impedes build performance as the list of icons is huge.
+            // Importing the entire Material UI icons packages impedes build performance as the list of icons is huge.
             name: '@material-ui/icons',
             message: "Please import '@material-ui/icons/<Icon>' instead.",
           },
@@ -208,8 +230,18 @@ function createConfigForRole(dir, role, extraConfig = {}) {
             name: '@material-ui/icons/', // because this is possible too ._.
             message: "Please import '@material-ui/icons/<Icon>' instead.",
           },
+          {
+            // https://mui.com/material-ui/guides/minimizing-bundle-size/
+            name: '@mui/material',
+            message: "Please import '@mui/material/...' instead.",
+          },
           ...require('module').builtinModules,
           ...(extraConfig.restrictedImports ?? []),
+        ],
+        // https://mui.com/material-ui/guides/minimizing-bundle-size/
+        restrictedImportPatterns: [
+          '@mui/*/*/*',
+          ...(extraConfig.restrictedImportPatterns ?? []),
         ],
         tsRules: {
           'react/prop-types': 0,
@@ -245,7 +277,7 @@ function createConfigForRole(dir, role, extraConfig = {}) {
         restrictedSrcSyntax: [
           {
             message:
-              "`__dirname` doesn't refer to the same dir in production builds, try `resolvePackagePath()` from `@backstage/backend-common` instead.",
+              "`__dirname` doesn't refer to the same dir in production builds, try `resolvePackagePath()` from `@backstage/backend-plugin-api` instead.",
             selector: 'Identifier[name="__dirname"]',
           },
           ...(extraConfig.restrictedSrcSyntax ?? []),

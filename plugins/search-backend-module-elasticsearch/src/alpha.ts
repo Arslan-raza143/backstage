@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The Backstage Authors
+ * Copyright 2024 The Backstage Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,62 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {
-  coreServices,
-  createBackendModule,
-} from '@backstage/backend-plugin-api';
-import { loggerToWinstonLogger } from '@backstage/backend-common';
-import { searchEngineRegistryExtensionPoint } from '@backstage/plugin-search-backend-node/alpha';
 
-import {
-  ElasticSearchCustomIndexTemplate,
-  ElasticSearchQueryTranslator,
-  ElasticSearchSearchEngine,
-} from '@backstage/plugin-search-backend-module-elasticsearch';
+import { default as feature } from './module';
 
-/**
- * @alpha
- * Options for {@link searchModuleElasticsearchEngine}.
- */
-export type SearchModuleElasticsearchEngineOptions = {
-  translator?: ElasticSearchQueryTranslator;
-  indexTemplate?: ElasticSearchCustomIndexTemplate;
-};
-
-/**
- * @alpha
- * Search backend module for the Elasticsearch engine.
- */
-export const searchModuleElasticsearchEngine = createBackendModule(
-  (options?: SearchModuleElasticsearchEngineOptions) => ({
-    moduleId: 'elasticsearchEngine',
-    pluginId: 'search',
-    register(env) {
-      env.registerInit({
-        deps: {
-          searchEngineRegistry: searchEngineRegistryExtensionPoint,
-          logger: coreServices.logger,
-          config: coreServices.config,
-        },
-        async init({ searchEngineRegistry, logger, config }) {
-          const searchEngine = await ElasticSearchSearchEngine.fromConfig({
-            logger: loggerToWinstonLogger(logger),
-            config: config,
-          });
-
-          // set custom translator if available
-          if (options?.translator) {
-            searchEngine.setTranslator(options.translator);
-          }
-
-          // set custom index template if available
-          if (options?.indexTemplate) {
-            searchEngine.setIndexTemplate(options.indexTemplate);
-          }
-
-          searchEngineRegistry.setSearchEngine(searchEngine);
-        },
-      });
-    },
-  }),
-);
+/** @alpha */
+const _feature = feature;
+export default _feature;

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { getVoidLogger } from '@backstage/backend-common';
 import { ConfigReader } from '@backstage/config';
 import {
   DefaultGithubCredentialsProvider,
@@ -23,6 +22,7 @@ import {
 import { LocationSpec } from '@backstage/plugin-catalog-node';
 import { GithubDiscoveryProcessor, parseUrl } from './GithubDiscoveryProcessor';
 import { getOrganizationRepositories } from '../lib';
+import { mockServices } from '@backstage/backend-test-utils';
 
 jest.mock('../lib');
 const mockGetOrganizationRepositories =
@@ -80,7 +80,7 @@ describe('GithubDiscoveryProcessor', () => {
       const githubCredentialsProvider =
         DefaultGithubCredentialsProvider.fromIntegrations(integrations);
       const processor = GithubDiscoveryProcessor.fromConfig(config, {
-        logger: getVoidLogger(),
+        logger: mockServices.logger.mock(),
         githubCredentialsProvider,
       });
       const location: LocationSpec = {
@@ -105,7 +105,7 @@ describe('GithubDiscoveryProcessor', () => {
       const githubCredentialsProvider =
         DefaultGithubCredentialsProvider.fromIntegrations(integrations);
       const processor = GithubDiscoveryProcessor.fromConfig(config, {
-        logger: getVoidLogger(),
+        logger: mockServices.logger.mock(),
         githubCredentialsProvider,
       });
       const location: LocationSpec = {
@@ -130,7 +130,7 @@ describe('GithubDiscoveryProcessor', () => {
     const githubCredentialsProvider =
       DefaultGithubCredentialsProvider.fromIntegrations(integrations);
     const processor = GithubDiscoveryProcessor.fromConfig(config, {
-      logger: getVoidLogger(),
+      logger: mockServices.logger.mock(),
       githubCredentialsProvider,
     });
 
@@ -155,6 +155,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'master',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
           {
             name: 'demo',
@@ -166,6 +167,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
         ],
       });
@@ -209,6 +211,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
         ],
       });
@@ -242,6 +245,7 @@ describe('GithubDiscoveryProcessor', () => {
             isFork: false,
             defaultBranchRef: null,
             catalogInfoFile: null,
+            visibility: 'public',
           },
         ],
       });
@@ -269,6 +273,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'master',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
         ],
       });
@@ -305,6 +310,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
           {
             name: 'techdocs-cli',
@@ -316,6 +322,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
           {
             name: 'techdocs-container',
@@ -327,6 +334,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
           {
             name: 'techdocs-durp',
@@ -336,6 +344,7 @@ describe('GithubDiscoveryProcessor', () => {
             isFork: false,
             defaultBranchRef: null,
             catalogInfoFile: null,
+            visibility: 'public',
           },
         ],
       });
@@ -380,6 +389,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
           {
             name: 'test',
@@ -391,6 +401,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
           {
             name: 'test-archived',
@@ -402,6 +413,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
           {
             name: 'testxyz',
@@ -413,6 +425,7 @@ describe('GithubDiscoveryProcessor', () => {
               name: 'main',
             },
             catalogInfoFile: null,
+            visibility: 'public',
           },
         ],
       });

@@ -1,6 +1,6 @@
 import Link from '@docusaurus/Link';
 import clsx from 'clsx';
-import React, { FC, PropsWithChildren, ReactNode } from 'react';
+import React, { PropsWithChildren, ReactNode } from 'react';
 
 import contentBlockStyles from './contentBlock.module.scss';
 
@@ -37,7 +37,14 @@ export const ContentBlock = ({
     {children && React.isValidElement(children) ? children : <p>{children}</p>}
 
     {actionButtons && (
-      <div className="actionButtons">
+      <div
+        className="actionButtons"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+          gap: '15px',
+        }}
+      >
         {actionButtons.map(({ link, label }, index) => (
           <Link
             key={index}

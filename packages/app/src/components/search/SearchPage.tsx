@@ -23,10 +23,10 @@ import {
   useSidebarPinState,
 } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
-import { CatalogSearchResultListItem } from '@internal/plugin-catalog-customized';
+import { CatalogSearchResultListItem } from '@backstage/plugin-catalog';
 import {
-  catalogApiRef,
   CATALOG_FILTER_EXISTS,
+  catalogApiRef,
 } from '@backstage/plugin-catalog-react';
 import { SearchType } from '@backstage/plugin-search';
 import {
@@ -38,15 +38,13 @@ import {
   useSearch,
 } from '@backstage/plugin-search-react';
 import { TechDocsSearchResultListItem } from '@backstage/plugin-techdocs';
-import { Grid, makeStyles, Paper, Theme } from '@material-ui/core';
+import Paper from '@material-ui/core/Paper';
+import Grid from '@material-ui/core/Grid';
+import { Theme } from '@material-ui/core/styles/createTheme';
+import { makeStyles } from '@material-ui/core/styles';
 import React from 'react';
-import { ToolSearchResultListItem } from '@backstage/plugin-explore';
-import BuildIcon from '@material-ui/icons/Build';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  bar: {
-    padding: theme.spacing(1, 0),
-  },
   filter: {
     '& + &': {
       marginTop: theme.spacing(2.5),
@@ -70,14 +68,12 @@ const SearchPage = () => {
       <Content>
         <Grid container direction="row">
           <Grid item xs={12}>
-            <Paper className={classes.bar}>
-              <SearchBar debounceTime={100} />
-            </Paper>
+            <SearchBar debounceTime={100} />
           </Grid>
           {!isMobile && (
             <Grid item xs={3}>
               <SearchType.Accordion
-                name="Result Type"
+                name="Result type"
                 defaultValue="software-catalog"
                 showCounts
                 types={[
@@ -121,7 +117,7 @@ const SearchPage = () => {
                   name="kind"
                   values={['Component', 'Template']}
                 />
-                <SearchFilter.Checkbox
+                <SearchFilter.Select
                   className={classes.filter}
                   label="Lifecycle"
                   name="lifecycle"
@@ -135,7 +131,6 @@ const SearchPage = () => {
             <SearchResult>
               <CatalogSearchResultListItem icon={<CatalogIcon />} />
               <TechDocsSearchResultListItem icon={<DocsIcon />} />
-              <ToolSearchResultListItem icon={<BuildIcon />} />
             </SearchResult>
             <SearchResultPager />
           </Grid>
