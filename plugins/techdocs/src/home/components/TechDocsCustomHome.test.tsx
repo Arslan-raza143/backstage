@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-import { CatalogApi, catalogApiRef } from '@backstage/plugin-catalog-react';
+import {
+  catalogApiRef,
+  starredEntitiesApiRef,
+  MockStarredEntitiesApi,
+} from '@backstage/plugin-catalog-react';
+import { catalogApiMock } from '@backstage/plugin-catalog-react/testUtils';
 import { renderInTestApp, TestApiRegistry } from '@backstage/test-utils';
 import { screen } from '@testing-library/react';
 import React from 'react';
@@ -22,24 +27,24 @@ import { TechDocsCustomHome, PanelType } from './TechDocsCustomHome';
 import { ApiProvider } from '@backstage/core-app-api';
 import { rootDocsRouteRef } from '../../routes';
 
-const mockCatalogApi = {
-  getEntityByRef: jest.fn(),
-  getEntities: async () => ({
-    items: [
-      {
-        apiVersion: 'version',
-        kind: 'User',
-        metadata: {
-          name: 'owned',
-          namespace: 'default',
-        },
+const mockCatalogApi = catalogApiMock({
+  entities: [
+    {
+      apiVersion: 'version',
+      kind: 'User',
+      metadata: {
+        name: 'owned',
+        namespace: 'default',
       },
-    ],
-  }),
-} as Partial<CatalogApi>;
+    },
+  ],
+});
 
 describe('TechDocsCustomHome', () => {
-  const apiRegistry = TestApiRegistry.from([catalogApiRef, mockCatalogApi]);
+  const apiRegistry = TestApiRegistry.from(
+    [catalogApiRef, mockCatalogApi],
+    [starredEntitiesApiRef, new MockStarredEntitiesApi()],
+  );
 
   it('should render a TechDocs home page', async () => {
     const tabsConfig = [

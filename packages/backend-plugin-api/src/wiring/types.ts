@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { ServiceRef } from '../services/system/types';
+import { InternalServiceFactory, ServiceRef } from '../services/system/types';
+import { BackendFeature } from '../types';
 
 /**
  * TODO
@@ -35,6 +36,17 @@ export type ExtensionPoint<T> = {
   $$type: '@backstage/ExtensionPoint';
 };
 
+/** @ignore */
+type DepsToInstances<
+  TDeps extends {
+    [key in string]: ServiceRef<unknown> | ExtensionPoint<unknown>;
+  },
+> = {
+  [key in keyof TDeps]: TDeps[key] extends ServiceRef<unknown, any, 'multiton'>
+    ? Array<TDeps[key]['T']>
+    : TDeps[key]['T'];
+};
+
 /**
  * The callbacks passed to the `register` method of a backend plugin.
  *
@@ -45,11 +57,13 @@ export interface BackendPluginRegistrationPoints {
     ref: ExtensionPoint<TExtensionPoint>,
     impl: TExtensionPoint,
   ): void;
-  registerInit<Deps extends { [name in string]: unknown }>(options: {
-    deps: {
-      [name in keyof Deps]: ServiceRef<Deps[name]>;
-    };
-    init(deps: Deps): Promise<void>;
+  registerInit<
+    TDeps extends {
+      [name in string]: ServiceRef<unknown>;
+    },
+  >(options: {
+    deps: TDeps;
+    init(deps: DepsToInstances<TDeps>): Promise<void>;
   }): void;
 }
 
@@ -59,23 +73,24 @@ export interface BackendPluginRegistrationPoints {
  * @public
  */
 export interface BackendModuleRegistrationPoints {
-  registerInit<Deps extends { [name in string]: unknown }>(options: {
-    deps: {
-      [name in keyof Deps]: ServiceRef<Deps[name]> | ExtensionPoint<Deps[name]>;
-    };
-    init(deps: Deps): Promise<void>;
+  registerExtensionPoint<TExtensionPoint>(
+    ref: ExtensionPoint<TExtensionPoint>,
+    impl: TExtensionPoint,
+  ): void;
+  registerInit<
+    TDeps extends {
+      [name in string]: ServiceRef<unknown> | ExtensionPoint<unknown>;
+    },
+  >(options: {
+    deps: TDeps;
+    init(deps: DepsToInstances<TDeps>): Promise<void>;
   }): void;
 }
 
-/** @public */
-export interface BackendFeature {
-  // NOTE: This type is opaque in order to simplify future API evolution.
-  $$type: '@backstage/BackendFeature';
-}
-
 /** @internal */
-export interface InternalBackendFeature extends BackendFeature {
+export interface InternalBackendRegistrations extends BackendFeature {
   version: 'v1';
+  featureType: 'registrations';
   getRegistrations(): Array<
     InternalBackendPluginRegistration | InternalBackendModuleRegistration
   >;
@@ -97,8 +112,26 @@ export interface InternalBackendModuleRegistration {
   pluginId: string;
   moduleId: string;
   type: 'module';
+  extensionPoints: Array<readonly [ExtensionPoint<unknown>, unknown]>;
   init: {
     deps: Record<string, ServiceRef<unknown> | ExtensionPoint<unknown>>;
     func(deps: Record<string, unknown>): Promise<void>;
   };
 }
+
+/**
+ * @public
+ */
+export interface InternalBackendFeatureLoader extends BackendFeature {
+  version: 'v1';
+  featureType: 'loader';
+  description: string;
+  deps: Record<string, ServiceRef<unknown>>;
+  loader(deps: Record<string, unknown>): Promise<BackendFeature[]>;
+}
+
+/** @internal */
+export type InternalBackendFeature =
+  | InternalBackendRegistrations
+  | InternalBackendFeatureLoader
+  | InternalServiceFactory;

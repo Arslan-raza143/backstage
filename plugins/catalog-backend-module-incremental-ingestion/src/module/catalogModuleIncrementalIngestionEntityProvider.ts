@@ -17,6 +17,7 @@
 import {
   coreServices,
   createBackendModule,
+  createExtensionPoint,
 } from '@backstage/backend-plugin-api';
 import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node/alpha';
 import {
@@ -24,57 +25,116 @@ import {
   IncrementalEntityProviderOptions,
 } from '@backstage/plugin-catalog-backend-module-incremental-ingestion';
 import { WrapperProviders } from './WrapperProviders';
+import { eventsServiceRef } from '@backstage/plugin-events-node';
+
+/**
+ * @public
+ * Interface for {@link incrementalIngestionProvidersExtensionPoint}.
+ */
+export interface IncrementalIngestionProviderExtensionPoint {
+  /** Adds a new incremental entity provider */
+  addProvider<TCursor, TContext>(config: {
+    options: IncrementalEntityProviderOptions;
+    provider: IncrementalEntityProvider<TCursor, TContext>;
+  }): void;
+}
+
+/**
+ * @public
+ *
+ * Extension point for registering incremental ingestion providers.
+ * The `catalogModuleIncrementalIngestionEntityProvider` must be installed for these providers to work.
+ *
+ * @example
+ *
+ * ```ts
+ * backend.add(createBackendModule({
+ *   pluginId: 'catalog',
+ *   moduleId: 'my-incremental-provider',
+ *   register(env) {
+ *     env.registerInit({
+ *       deps: {
+ *         extension: incrementalIngestionProvidersExtensionPoint,
+ *       },
+ *       async init({ extension }) {
+ *         extension.addProvider({
+ *           burstInterval: ...,
+ *           burstLength: ...,
+ *           restLength: ...,
+ *         }, {
+ *           next(context, cursor) {
+ *             ...
+ *           },
+ *           ...
+ *         })
+ *       })
+ *     })
+ *   }
+ * }))
+ * ```
+ */
+export const incrementalIngestionProvidersExtensionPoint =
+  createExtensionPoint<IncrementalIngestionProviderExtensionPoint>({
+    id: 'catalog.incrementalIngestionProvider.providers',
+  });
 
 /**
  * Registers the incremental entity provider with the catalog processing extension point.
  *
- * @alpha
+ * @public
  */
 export const catalogModuleIncrementalIngestionEntityProvider =
-  createBackendModule(
-    (options: {
-      providers: Array<{
+  createBackendModule({
+    pluginId: 'catalog',
+    moduleId: 'incremental-ingestion-entity-provider',
+    register(env) {
+      const addedProviders = new Array<{
         provider: IncrementalEntityProvider<unknown, unknown>;
         options: IncrementalEntityProviderOptions;
-      }>;
-    }) => ({
-      pluginId: 'catalog',
-      moduleId: 'incrementalIngestionEntityProvider',
-      register(env) {
-        env.registerInit({
-          deps: {
-            catalog: catalogProcessingExtensionPoint,
-            config: coreServices.config,
-            database: coreServices.database,
-            httpRouter: coreServices.httpRouter,
-            logger: coreServices.logger,
-            scheduler: coreServices.scheduler,
-          },
-          async init({
-            catalog,
+      }>();
+
+      env.registerExtensionPoint(incrementalIngestionProvidersExtensionPoint, {
+        addProvider({ options, provider }) {
+          addedProviders.push({ options, provider });
+        },
+      });
+
+      env.registerInit({
+        deps: {
+          catalog: catalogProcessingExtensionPoint,
+          config: coreServices.rootConfig,
+          database: coreServices.database,
+          httpRouter: coreServices.httpRouter,
+          logger: coreServices.logger,
+          scheduler: coreServices.scheduler,
+          events: eventsServiceRef,
+        },
+        async init({
+          catalog,
+          config,
+          database,
+          httpRouter,
+          logger,
+          scheduler,
+          events,
+        }) {
+          const client = await database.getClient();
+
+          const providers = new WrapperProviders({
             config,
-            database,
-            httpRouter,
             logger,
+            client,
             scheduler,
-          }) {
-            const client = await database.getClient();
+            events,
+          });
 
-            const providers = new WrapperProviders({
-              config,
-              logger,
-              client,
-              scheduler,
-            });
+          for (const entry of addedProviders) {
+            const wrapped = providers.wrap(entry.provider, entry.options);
+            catalog.addEntityProvider(wrapped);
+          }
 
-            for (const entry of options.providers) {
-              const wrapped = providers.wrap(entry.provider, entry.options);
-              catalog.addEntityProvider(wrapped);
-            }
-
-            httpRouter.use(await providers.adminRouter());
-          },
-        });
-      },
-    }),
-  );
+          httpRouter.use(providers.adminRouter());
+        },
+      });
+    },
+  });

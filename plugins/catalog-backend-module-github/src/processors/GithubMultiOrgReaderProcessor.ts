@@ -16,9 +16,9 @@
 
 import {
   DEFAULT_NAMESPACE,
-  GroupEntity,
+  Entity,
+  isGroupEntity,
   stringifyEntityRef,
-  UserEntity,
 } from '@backstage/catalog-model';
 import { Config } from '@backstage/config';
 import {
@@ -36,7 +36,6 @@ import {
   processingResult,
 } from '@backstage/plugin-catalog-node';
 import { graphql } from '@octokit/graphql';
-import { Logger } from 'winston';
 import {
   assignGroupsToUsers,
   buildOrgHierarchy,
@@ -49,6 +48,8 @@ import {
   TeamTransformer,
   UserTransformer,
 } from '../lib';
+import { areGroupEntities, areUserEntities } from '../lib/guards';
+import { LoggerService } from '@backstage/backend-plugin-api';
 
 /**
  * Extracts teams and users out of a multiple GitHub orgs namespaced per org.
@@ -60,13 +61,13 @@ import {
 export class GithubMultiOrgReaderProcessor implements CatalogProcessor {
   private readonly integrations: ScmIntegrationRegistry;
   private readonly orgs: GithubMultiOrgConfig;
-  private readonly logger: Logger;
+  private readonly logger: LoggerService;
   private readonly githubCredentialsProvider: GithubCredentialsProvider;
 
   static fromConfig(
     config: Config,
     options: {
-      logger: Logger;
+      logger: LoggerService;
       githubCredentialsProvider?: GithubCredentialsProvider;
       userTransformer?: UserTransformer;
       teamTransformer?: TeamTransformer;
@@ -85,7 +86,7 @@ export class GithubMultiOrgReaderProcessor implements CatalogProcessor {
   constructor(
     private options: {
       integrations: ScmIntegrationRegistry;
-      logger: Logger;
+      logger: LoggerService;
       orgs: GithubMultiOrgConfig;
       githubCredentialsProvider?: GithubCredentialsProvider;
       userTransformer?: UserTransformer;
@@ -147,7 +148,7 @@ export class GithubMultiOrgReaderProcessor implements CatalogProcessor {
           client,
           orgConfig.name,
           tokenType,
-          async (githubUser, ctx): Promise<UserEntity | undefined> => {
+          async (githubUser, ctx): Promise<Entity | undefined> => {
             const result = this.options.userTransformer
               ? await this.options.userTransformer(githubUser, ctx)
               : await defaultUserTransformer(githubUser, ctx);
@@ -160,15 +161,15 @@ export class GithubMultiOrgReaderProcessor implements CatalogProcessor {
           },
         );
 
-        const { groups } = await getOrganizationTeams(
+        const { teams } = await getOrganizationTeams(
           client,
           orgConfig.name,
-          async (team, ctx): Promise<GroupEntity | undefined> => {
+          async (team, ctx): Promise<Entity | undefined> => {
             const result = this.options.teamTransformer
               ? await this.options.teamTransformer(team, ctx)
               : await defaultOrganizationTeamTransformer(team, ctx);
 
-            if (result) {
+            if (result && isGroupEntity(result)) {
               result.metadata.namespace = orgConfig.groupNamespace;
               // Group `spec.members` inherits the namespace of it's group so need to explicitly specify refs here
               result.spec.members = team.members.map(
@@ -185,7 +186,7 @@ export class GithubMultiOrgReaderProcessor implements CatalogProcessor {
 
         const duration = ((Date.now() - startTimestamp) / 1000).toFixed(1);
         this.logger.debug(
-          `Read ${users.length} GitHub users and ${groups.length} GitHub teams from ${orgConfig.name} in ${duration} seconds`,
+          `Read ${users.length} GitHub users and ${teams.length} GitHub teams from ${orgConfig.name} in ${duration} seconds`,
         );
 
         // Grab current users from `allUsersMap` if they already exist in our
@@ -199,11 +200,15 @@ export class GithubMultiOrgReaderProcessor implements CatalogProcessor {
           return allUsersMap.get(userRef);
         });
 
-        assignGroupsToUsers(pendingUsers, groups);
-        buildOrgHierarchy(groups);
+        if (areGroupEntities(teams)) {
+          buildOrgHierarchy(teams);
+          if (areUserEntities(pendingUsers)) {
+            assignGroupsToUsers(pendingUsers, teams);
+          }
+        }
 
-        for (const group of groups) {
-          emit(processingResult.entity(location, group));
+        for (const team of teams) {
+          emit(processingResult.entity(location, team));
         }
       } catch (e) {
         this.logger.error(
@@ -233,6 +238,7 @@ export class GithubMultiOrgReaderProcessor implements CatalogProcessor {
       .map(install =>
         install.target_type === 'Organization' &&
         install.account &&
+        'login' in install.account &&
         install.account.login
           ? {
               name: install.account.login,

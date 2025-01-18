@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-import { coreServices } from '@backstage/backend-plugin-api';
-import { startTestBackend } from '@backstage/backend-test-utils';
-import { ConfigReader } from '@backstage/config';
+import { mockServices, startTestBackend } from '@backstage/backend-test-utils';
 import { eventsExtensionPoint } from '@backstage/plugin-events-node/alpha';
 import {
   HttpPostIngressOptions,
@@ -27,14 +25,19 @@ import { eventsModuleGithubWebhook } from './eventsModuleGithubWebhook';
 
 describe('eventsModuleGithubWebhook', () => {
   const secret = 'valid-secret';
-  const payload = { test: 'payload' };
-  const payloadString = JSON.stringify(payload);
+  const payloadString = '{"test": "payload", "score": 5.0}';
+  const payload = JSON.parse(payloadString);
+  const payloadBuffer = Buffer.from(payloadString);
   const validSignature = sign({ secret, algorithm: 'sha256' }, payloadString);
   const requestWithSignature = async (signature?: string) => {
     return {
       body: payload,
       headers: {
         'x-hub-signature-256': signature,
+      },
+      raw: {
+        body: payloadBuffer,
+        encoding: 'utf-8',
       },
     } as RequestDetails;
   };
@@ -47,20 +50,22 @@ describe('eventsModuleGithubWebhook', () => {
       },
     };
 
-    const config = new ConfigReader({
-      events: {
-        modules: {
-          github: {
-            webhookSecret: secret,
-          },
-        },
-      },
-    });
-
     await startTestBackend({
       extensionPoints: [[eventsExtensionPoint, extensionPoint]],
-      services: [[coreServices.config, config]],
-      features: [eventsModuleGithubWebhook()],
+      features: [
+        eventsModuleGithubWebhook,
+        mockServices.rootConfig.factory({
+          data: {
+            events: {
+              modules: {
+                github: {
+                  webhookSecret: secret,
+                },
+              },
+            },
+          },
+        }),
+      ],
     });
 
     expect(addedIngress).not.toBeUndefined();

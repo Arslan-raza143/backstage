@@ -18,44 +18,23 @@ import {
   BackendFeature,
   ExtensionPoint,
   ServiceRef,
-  ServiceFactoryOrFunction,
+  ServiceFactory,
 } from '@backstage/backend-plugin-api';
 
 /**
  * @public
  */
 export interface Backend {
-  add(feature: BackendFeature): void;
+  add(feature: BackendFeature | Promise<{ default: BackendFeature }>): void;
   start(): Promise<void>;
   stop(): Promise<void>;
-}
-
-export interface BackendRegisterInit {
-  id: string;
-  consumes: Set<ServiceOrExtensionPoint>;
-  provides: Set<ServiceOrExtensionPoint>;
-  init: {
-    deps: { [name: string]: ServiceOrExtensionPoint };
-    func: (deps: { [name: string]: unknown }) => Promise<void>;
-  };
 }
 
 /**
  * @public
  */
 export interface CreateSpecializedBackendOptions {
-  services: ServiceFactoryOrFunction[];
-}
-
-export interface ServiceHolder {
-  get<T>(api: ServiceRef<T>, pluginId: string): Promise<T> | undefined;
-}
-
-/**
- * @internal
- */
-export interface EnumerableServiceHolder extends ServiceHolder {
-  getServiceRefs(): ServiceRef<unknown>[];
+  defaultServiceFactories: ServiceFactory[];
 }
 
 /**

@@ -17,7 +17,7 @@
 import OAuth2 from './OAuth2';
 import MockOAuthApi from '../../OAuthRequestApi/MockOAuthApi';
 import { UrlPatternDiscovery } from '../../DiscoveryApi';
-import { MockConfigApi } from '@backstage/test-utils';
+import { mockApis } from '@backstage/test-utils';
 
 const theFuture = new Date(Date.now() + 3600000);
 const thePast = new Date(Date.now() - 10);
@@ -35,7 +35,7 @@ jest.mock('../../../../lib/AuthSessionManager', () => ({
   },
 }));
 
-const configApi = new MockConfigApi({});
+const configApi = mockApis.config();
 
 describe('OAuth2', () => {
   it('should get refreshed access token', async () => {
@@ -74,6 +74,37 @@ describe('OAuth2', () => {
         scopes: new Set(['my-prefix/my-scope']),
       }),
     );
+  });
+
+  it('should forward backstage identity', async () => {
+    getSession = jest.fn().mockResolvedValue({
+      providerInfo: { accessToken: 'access-token', expiresAt: theFuture },
+      backstageIdentity: {
+        token: 'a.b.c',
+        expiresAt: theFuture,
+        identity: {
+          type: 'user',
+          userEntityRef: 'user:default/mock',
+          ownershipEntityRefs: [],
+        },
+      },
+    });
+    const oauth2 = OAuth2.create({
+      configApi: configApi,
+      scopeTransform: scopes => scopes.map(scope => `my-prefix/${scope}`),
+      oauthRequestApi: new MockOAuthApi(),
+      discoveryApi: UrlPatternDiscovery.compile('http://example.com'),
+    });
+
+    await expect(oauth2.getBackstageIdentity()).resolves.toEqual({
+      token: 'a.b.c',
+      expiresAt: theFuture,
+      identity: {
+        type: 'user',
+        userEntityRef: 'user:default/mock',
+        ownershipEntityRefs: [],
+      },
+    });
   });
 
   it('should get refreshed id token', async () => {

@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import Box from '@material-ui/core/Box';
 import IconButton from '@material-ui/core/IconButton';
 import CopyIcon from '@material-ui/icons/FileCopy';
@@ -69,7 +70,7 @@ export function RealLogViewer(props: RealLogViewerProps) {
 
   return (
     <AutoSizer>
-      {({ height, width }) => (
+      {({ height, width }: { height?: number; width?: number }) => (
         <Box style={{ width, height }} className={classes.root}>
           <Box className={classes.header}>
             <LogViewerControls {...search} />
@@ -77,8 +78,8 @@ export function RealLogViewer(props: RealLogViewerProps) {
           <FixedSizeList
             ref={listRef}
             className={classes.log}
-            height={height - HEADER_SIZE}
-            width={width}
+            height={(height || 480) - HEADER_SIZE}
+            width={width || 640}
             itemData={search.lines}
             itemSize={20}
             itemCount={search.lines.length}

@@ -239,17 +239,18 @@ Example: `visits-tracking-service`, `CircleciBuildsDumpV2_avro_gcs`
 
 ### `namespace` [optional]
 
-The ID of a namespace that the entity belongs to. This is a string that follows
-the same format restrictions as `name` above.
+The ID of a namespace that the entity belongs to. This field is optional, and
+currently has no special semantics apart from bounding the name uniqueness
+constraint if specified. It is reserved for future use and may get broader
+semantic implication later.
 
-This field is optional, and currently has no special semantics apart from
-bounding the name uniqueness constraint if specified. It is reserved for future
-use and may get broader semantic implication later. For now, it is recommended
-to not specify a namespace unless you have specific need to do so. This means
-the entity belongs to the `"default"` namespace.
+For now, it is recommended to not specify a namespace unless you have specific
+need to do so. This means the entity belongs to the `"default"` namespace.
 
-Namespaces may also be part of the catalog, and are `v1` / `Namespace` entities,
-i.e. not Backstage specific but the same as in Kubernetes.
+Namespaces must be sequences of `[a-zA-Z0-9]`, possibly separated by `-`, at
+most 63 characters in total. Namespace names are case insensitive and will be rendered as lower case in most places.
+
+Example: `tracking-services`, `payment`
 
 ### `uid` [output]
 
@@ -350,7 +351,7 @@ component, like `java` or `go`.
 
 This field is optional, and currently has no special semantics.
 
-Each tag must be sequences of `[a-z0-9]` separated by `-`, at most 63 characters
+Each tag must be sequences of `[a-z0-9:+#]` separated by `-`, at most 63 characters
 in total.
 
 ### `links` [optional]
@@ -400,12 +401,8 @@ follows.
   // ...
   "relations": [
     {
-      "target": {
-        "kind": "group",
-        "namespace": "default",
-        "name": "dev.infra"
-      },
-      "type": "ownedBy"
+      "type": "ownedBy",
+      "targetRef": "group:default/dev.infra"
     }
   ],
   "spec": {
@@ -417,11 +414,11 @@ follows.
 
 The fields of a relation are:
 
-| Field      | Type   | Description                                                                      |
-| ---------- | ------ | -------------------------------------------------------------------------------- |
-| `target`   | Object | A complete [compound reference](references.md) to the other end of the relation. |
-| `type`     | String | The type of relation FROM a source entity TO the target entity.                  |
-| `metadata` | Object | Reserved for future use.                                                         |
+| Field       | Type   | Description                                                                |
+| ----------- | ------ | -------------------------------------------------------------------------- |
+| `targetRef` | String | A full [entity reference](references.md) to the other end of the relation. |
+| `type`      | String | The type of relation FROM a source entity TO the target entity.            |
+| `metadata`  | Object | Reserved for future use.                                                   |
 
 Entity descriptor YAML files are not supposed to contain this field. Instead,
 catalog processors analyze the entity descriptor data and its surroundings, and
@@ -530,6 +527,8 @@ spec:
   system: artist-engagement-portal
   dependsOn:
     - resource:default/artists-db
+  dependencyOf:
+    - component:default/artist-web-lookup
   providesApis:
     - artist-api
 ```
@@ -639,6 +638,17 @@ field is optional.
 | [`Component`](#kind-component)          | Same as this entity, typically `default`   | [`dependsOn`, and reverse `dependencyOf`](well-known-relations.md#dependson-and-dependencyof) |
 | [`Resource`](#kind-resource)            | Same as this entity, typically `default`   | [`dependsOn`, and reverse `dependencyOf`](well-known-relations.md#dependson-and-dependencyof) |
 
+### `spec.dependencyOf` [optional]
+
+An array of [entity references](references.md#string-references) to the
+components and resources that the component is a dependency of, e.g. `artist-web-lookup`.
+This field is optional.
+
+| [`kind`](#apiversion-and-kind-required) | Default [`namespace`](#namespace-optional) | Generated [relation](well-known-relations.md) type                                            |
+| --------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| [`Component`](#kind-component)          | Same as this entity, typically `default`   | [`dependencyOf`, and reverse `dependsOn`](well-known-relations.md#dependson-and-dependencyof) |
+| [`Resource`](#kind-resource)            | Same as this entity, typically `default`   | [`dependencyOf`, and reverse `dependsOn`](well-known-relations.md#dependson-and-dependencyof) |
+
 ## Kind: Template
 
 The following describes the following entity kind:
@@ -662,6 +672,8 @@ metadata:
   name: v1beta2-demo
   title: Test Action template
   description: scaffolder v1beta2 template demo
+  annotations:
+    backstage.io/time-saved: PT4H
 spec:
   owner: backstage/techdocs-core
   type: service
@@ -739,6 +751,16 @@ A list of strings that can be associated with the template, e.g.
 This list will also be used in the frontend to display to the user so you can
 potentially search and group templates by these tags.
 
+### `metadata.annotations.[backstage.io/time-saved]` [optional]
+
+An ISO 8601 duration representing the approximate amount of time saved when
+someone uses this template (e.g. `PT8H` to mean "8 hours saved" or `PT15M` to
+mean "15 minutes saved").
+
+Can be used in combination with the `backstage.io/source-template` annotation,
+or analytics data, to calculate how much time has been saved through the use
+of the Scaffolder plugin.
+
 ### `spec.type` [required]
 
 The type of component created by the template, e.g. `website`. This is used for
@@ -785,7 +807,7 @@ Describes the following entity kind:
 
 An API describes an interface that can be exposed by a component. The API can be
 defined in different formats, like [OpenAPI](https://swagger.io/specification/),
-[AsyncAPI](https://www.asyncapi.com/docs/specifications/latest/),
+[AsyncAPI](https://www.asyncapi.com/docs/reference/specification/latest),
 [GraphQL](https://graphql.org/learn/schema/),
 [gRPC](https://developers.google.com/protocol-buffers), or other formats.
 
@@ -841,7 +863,7 @@ The current set of well-known and common values for this field is:
 - `openapi` - An API definition in YAML or JSON format based on the
   [OpenAPI](https://swagger.io/specification/) version 2 or version 3 spec.
 - `asyncapi` - An API definition based on the
-  [AsyncAPI](https://www.asyncapi.com/docs/specifications/latest/) spec.
+  [AsyncAPI](https://www.asyncapi.com/docs/reference/specification/latest) version 2 or version 3 spec.
 - `graphql` - An API definition based on
   [GraphQL schemas](https://spec.graphql.org/) for consuming
   [GraphQL](https://graphql.org/) based APIs.
@@ -958,6 +980,14 @@ some form, that the group may wish to be used for contacting them. The picture
 is expected to be a URL pointing to an image that's representative of the group,
 and that a browser could fetch and render on a group page or similar.
 
+The fields of a profile are:
+
+| Field                    | Type   | Description                                                    |
+| ------------------------ | ------ | -------------------------------------------------------------- |
+| `displayName` (optional) | String | A human-readable name for the group.                           |
+| `email` (optional)       | String | An email the group may wish to be used for contacting them.    |
+| `picture` (optional)     | String | A URL pointing to an image that's representative of the group. |
+
 ### `spec.parent` [optional]
 
 The immediate parent group in the hierarchy, if any. Not all groups must have a
@@ -981,9 +1011,9 @@ way.
 The entries of this array are
 [entity references](https://backstage.io/docs/features/software-catalog/references).
 
-| [`kind`](#apiversion-and-kind-required) | Default [`namespace`](#namespace-optional) | Generated [relation](well-known-relations.md) type                                    |
-| --------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
-| [`Group`](#kind-group) (default)        | Same as this entity, typically `default`   | [`hasMember`, and reverse `memberOf`](well-known-relations.md#memberof-and-hasmember) |
+| [`kind`](#apiversion-and-kind-required) | Default [`namespace`](#namespace-optional) | Generated [relation](well-known-relations.md) type                                |
+| --------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------- |
+| [`Group`](#kind-group) (default)        | Same as this entity, typically `default`   | [`parentOf`, and reverse `childOf`](well-known-relations.md#parentof-and-childof) |
 
 ### `spec.members` [optional]
 
@@ -1042,6 +1072,14 @@ fields of this structure are also optional. The email would be a primary email
 of some form, that the user may wish to be used for contacting them. The picture
 is expected to be a URL pointing to an image that's representative of the user,
 and that a browser could fetch and render on a profile page or similar.
+
+The fields of a profile are:
+
+| Field                    | Type   | Description                                                   |
+| ------------------------ | ------ | ------------------------------------------------------------- |
+| `displayName` (optional) | String | A human-readable name for the user.                           |
+| `email` (optional)       | String | An email the user may wish to be used for contacting them.    |
+| `picture` (optional)     | String | A URL pointing to an image that's representative of the user. |
 
 ### `spec.memberOf` [required]
 
@@ -1122,7 +1160,7 @@ Some common values for this field could be:
 
 - `database`
 - `s3-bucket`
-- `cluster`
+- `kubernetes-cluster`
 
 ### `spec.system` [optional]
 
@@ -1218,6 +1256,18 @@ system belongs to, e.g. `artists`. This field is optional.
 | --------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
 | [`Domain`](#kind-domain) (default)      | Same as this entity, typically `default`   | [`partOf`, and reverse `hasPart`](well-known-relations.md#partof-and-haspart) |
 
+### `spec.type` [optional]
+
+The type of system. There is currently no enforced set of values for this field,
+so it is left up to the adopting organization to choose a nomenclature that
+matches their catalog hierarchy. This field is optional.
+
+Some common values for this field could be:
+
+- `product`
+- `service`
+- `feature-set`
+
 ## Kind: Domain
 
 Describes the following entity kind:
@@ -1240,6 +1290,7 @@ metadata:
   description: Everything about artists
 spec:
   owner: artist-relations-team
+  subdomainOf: audio-domain
 ```
 
 In addition to the [common envelope metadata](#common-to-all-kinds-the-metadata)
@@ -1267,6 +1318,27 @@ but there will always be one ultimate owner.
 | [`kind`](#apiversion-and-kind-required)                | Default [`namespace`](#namespace-optional) | Generated [relation](well-known-relations.md) type                              |
 | ------------------------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------- |
 | [`Group`](#kind-group) (default), [`User`](#kind-user) | Same as this entity, typically `default`   | [`ownerOf`, and reverse `ownedBy`](well-known-relations.md#ownedby-and-ownerof) |
+
+### `spec.subdomainOf` [optional]
+
+An [entity reference](references.md#string-references) to another domain of
+which the domain is a part, e.g. `audio`. This field is optional.
+
+| [`kind`](#apiversion-and-kind-required) | Default [`namespace`](#namespace-optional) | Generated [relation](well-known-relations.md) type                            |
+| --------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
+| [`Domain`](#kind-domain) (default)      | Same as this entity, typically `default`   | [`partOf`, and reverse `hasPart`](well-known-relations.md#partof-and-haspart) |
+
+### `spec.type` [optional]
+
+The type of domain. There is currently no enforced set of values for this field,
+so it is left up to the adopting organization to choose a nomenclature that
+matches their catalog hierarchy. This field is optional.
+
+Some common values for this field could be:
+
+- `product-area`
+- `product-group`
+- `bundle`
 
 ## Kind: Location
 

@@ -15,14 +15,15 @@
  */
 
 import React, { useState } from 'react';
-import useAsync from 'react-use/lib/useAsync';
-import { makeStyles } from '@material-ui/core';
-import { CSSProperties } from '@material-ui/styles';
+import useAsync from 'react-use/esm/useAsync';
+import { makeStyles } from '@material-ui/core/styles';
+import { CSSProperties } from '@material-ui/styles/withStyles';
 import {
   CATALOG_FILTER_EXISTS,
   catalogApiRef,
   CatalogApi,
   useEntityOwnership,
+  EntityListProvider,
 } from '@backstage/plugin-catalog-react';
 import { Entity } from '@backstage/catalog-model';
 import { DocsTable } from './Tables';
@@ -39,6 +40,7 @@ import {
   ContentHeader,
 } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
+import { TECHDOCS_ANNOTATION } from '@backstage/plugin-techdocs-common';
 
 const panels = {
   DocsTable: DocsTable,
@@ -126,7 +128,9 @@ const CustomPanel = ({
         ) : null}
       </ContentHeader>
       <div className={classes.panelContainer}>
-        <Panel data-testid="techdocs-custom-panel" entities={shownEntities} />
+        <EntityListProvider>
+          <Panel data-testid="techdocs-custom-panel" entities={shownEntities} />
+        </EntityListProvider>
       </div>
     </>
   );
@@ -153,7 +157,7 @@ export const TechDocsCustomHome = (props: TechDocsCustomHomeProps) => {
   } = useAsync(async () => {
     const response = await catalogApi.getEntities({
       filter: {
-        'metadata.annotations.backstage.io/techdocs-ref': CATALOG_FILTER_EXISTS,
+        [`metadata.annotations.${TECHDOCS_ANNOTATION}`]: CATALOG_FILTER_EXISTS,
       },
       fields: [
         'apiVersion',
@@ -165,7 +169,7 @@ export const TechDocsCustomHome = (props: TechDocsCustomHomeProps) => {
       ],
     });
     return response.items.filter((entity: Entity) => {
-      return !!entity.metadata.annotations?.['backstage.io/techdocs-ref'];
+      return !!entity.metadata.annotations?.[TECHDOCS_ANNOTATION];
     });
   });
 

@@ -13,10 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React from 'react';
-import { Box, Paper } from '@material-ui/core';
+import { InfoCard, MarkdownContent } from '@backstage/core-components';
+import {
+  ScaffolderOutputText,
+  ScaffolderTaskOutput,
+} from '@backstage/plugin-scaffolder-react';
+import Box from '@material-ui/core/Box';
+import Paper from '@material-ui/core/Paper';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LinkOutputs } from './LinkOutputs';
-import { ScaffolderTaskOutput } from '@backstage/plugin-scaffolder-react';
+import { TextOutputs } from './TextOutputs';
 
 /**
  * The DefaultOutputs renderer for the scaffolder task output
@@ -26,17 +32,67 @@ import { ScaffolderTaskOutput } from '@backstage/plugin-scaffolder-react';
 export const DefaultTemplateOutputs = (props: {
   output?: ScaffolderTaskOutput;
 }) => {
-  if (!props.output?.links) {
+  const { output } = props;
+  const [textOutputIndex, setTextOutputIndex] = useState<number | undefined>(
+    undefined,
+  );
+
+  useEffect(() => {
+    if (textOutputIndex === undefined && output?.text) {
+      const defaultIndex = output.text.findIndex(
+        (t: ScaffolderOutputText) => t.default,
+      );
+      setTextOutputIndex(defaultIndex >= 0 ? defaultIndex : 0);
+    }
+  }, [textOutputIndex, output]);
+
+  const textOutput = useMemo(
+    () =>
+      textOutputIndex !== undefined ? output?.text?.[textOutputIndex] : null,
+    [output, textOutputIndex],
+  );
+
+  if (!output) {
     return null;
   }
 
+  const emptyOutput = Object.keys(output).length === 0;
+
   return (
-    <Box paddingBottom={2}>
-      <Paper>
-        <Box padding={2} justifyContent="center" display="flex" gridGap={16}>
-          <LinkOutputs output={props.output} />
+    <>
+      {!emptyOutput ? (
+        <Box paddingBottom={2} data-testid="output-box">
+          <Paper>
+            <Box
+              padding={2}
+              justifyContent="center"
+              display="flex"
+              gridGap={16}
+              flexWrap="wrap"
+            >
+              <TextOutputs
+                output={output}
+                index={textOutputIndex}
+                setIndex={setTextOutputIndex}
+              />
+              <LinkOutputs output={output} />
+            </Box>
+          </Paper>
         </Box>
-      </Paper>
-    </Box>
+      ) : null}
+      {textOutput ? (
+        <Box paddingBottom={2} data-testid="text-output-box">
+          <InfoCard
+            title={textOutput.title ?? 'Text Output'}
+            noPadding
+            titleTypographyProps={{ component: 'h2' }}
+          >
+            <Box padding={2} height="100%">
+              <MarkdownContent content={textOutput.content ?? ''} />
+            </Box>
+          </InfoCard>
+        </Box>
+      ) : null}
+    </>
   );
 };

@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import React, { useContext, useState } from 'react';
 import { resolvePath, useLocation, useResolvedPath } from 'react-router-dom';
 import { makeStyles } from '@material-ui/core/styles';
@@ -21,7 +22,6 @@ import Typography from '@material-ui/core/Typography';
 import { Link } from '../../components/Link';
 import { IconComponent } from '@backstage/core-plugin-api';
 import classnames from 'classnames';
-import { BackstageTheme } from '@backstage/theme';
 import ArrowDropDownIcon from '@material-ui/icons/ArrowDropDown';
 import ArrowDropUpIcon from '@material-ui/icons/ArrowDropUp';
 import { SidebarItemWithSubmenuContext } from './config';
@@ -29,7 +29,19 @@ import { isLocationMatch } from './utils';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
 
-const useStyles = makeStyles<BackstageTheme>(
+/** @public */
+export type SidebarSubmenuItemClassKey =
+  | 'item'
+  | 'itemContainer'
+  | 'selected'
+  | 'label'
+  | 'subtitle'
+  | 'dropdownArrow'
+  | 'dropdown'
+  | 'dropdownItem'
+  | 'textContent';
+
+const useStyles = makeStyles(
   theme => ({
     item: {
       height: 48,
@@ -130,6 +142,8 @@ export type SidebarSubmenuItemProps = {
   to?: string;
   icon?: IconComponent;
   dropdownItems?: SidebarSubmenuItemDropdownItem[];
+  exact?: boolean;
+  initialShowDropdown?: boolean;
 };
 
 /**
@@ -138,7 +152,7 @@ export type SidebarSubmenuItemProps = {
  * @public
  */
 export const SidebarSubmenuItem = (props: SidebarSubmenuItemProps) => {
-  const { title, subtitle, to, icon: Icon, dropdownItems } = props;
+  const { title, subtitle, to, icon: Icon, dropdownItems, exact } = props;
   const classes = useStyles();
   const { setIsHoveredOn } = useContext(SidebarItemWithSubmenuContext);
   const closeSubmenu = () => {
@@ -146,16 +160,18 @@ export const SidebarSubmenuItem = (props: SidebarSubmenuItemProps) => {
   };
   const toLocation = useResolvedPath(to ?? '');
   const currentLocation = useLocation();
-  let isActive = isLocationMatch(currentLocation, toLocation);
+  let isActive = isLocationMatch(currentLocation, toLocation, exact);
 
-  const [showDropDown, setShowDropDown] = useState(false);
+  const [showDropDown, setShowDropDown] = useState(
+    props.initialShowDropdown ?? false,
+  );
   const handleClickDropdown = () => {
     setShowDropDown(!showDropDown);
   };
   if (dropdownItems !== undefined) {
     dropdownItems.some(item => {
       const resolvedPath = resolvePath(item.to);
-      isActive = isLocationMatch(currentLocation, resolvedPath);
+      isActive = isLocationMatch(currentLocation, resolvedPath, exact);
       return isActive;
     });
     return (
@@ -171,11 +187,19 @@ export const SidebarSubmenuItem = (props: SidebarSubmenuItemProps) => {
             )}
           >
             {Icon && <Icon fontSize="small" />}
-            <Typography variant="subtitle1" className={classes.label}>
+            <Typography
+              variant="subtitle1"
+              component="span"
+              className={classes.label}
+            >
               {title}
               <br />
               {subtitle && (
-                <Typography variant="caption" className={classes.subtitle}>
+                <Typography
+                  variant="caption"
+                  component="span"
+                  className={classes.subtitle}
+                >
                   {subtitle}
                 </Typography>
               )}
@@ -203,7 +227,7 @@ export const SidebarSubmenuItem = (props: SidebarSubmenuItemProps) => {
                   onClick={closeSubmenu}
                   onTouchStart={e => e.stopPropagation()}
                 >
-                  <Typography className={classes.textContent}>
+                  <Typography component="span" className={classes.textContent}>
                     {object.title}
                   </Typography>
                 </Link>
@@ -229,11 +253,19 @@ export const SidebarSubmenuItem = (props: SidebarSubmenuItemProps) => {
           onTouchStart={e => e.stopPropagation()}
         >
           {Icon && <Icon fontSize="small" />}
-          <Typography variant="subtitle1" className={classes.label}>
+          <Typography
+            variant="subtitle1"
+            component="span"
+            className={classes.label}
+          >
             {title}
             <br />
             {subtitle && (
-              <Typography variant="caption" className={classes.subtitle}>
+              <Typography
+                variant="caption"
+                component="span"
+                className={classes.subtitle}
+              >
                 {subtitle}
               </Typography>
             )}

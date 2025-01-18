@@ -22,22 +22,32 @@ import { createSpecializedBackend } from './createSpecializedBackend';
 
 describe('createSpecializedBackend', () => {
   it('should create a backend without services', () => {
-    expect(() => createSpecializedBackend({ services: [] })).not.toThrow();
+    expect(() =>
+      createSpecializedBackend({ defaultServiceFactories: [] }),
+    ).not.toThrow();
   });
 
   it('should throw on duplicate service implementations', () => {
     expect(() =>
       createSpecializedBackend({
-        services: [
+        defaultServiceFactories: [
           createServiceFactory({
             service: coreServices.rootLifecycle,
             deps: {},
-            factory: async () => ({ addShutdownHook: () => {} }),
+            factory: async () => ({
+              addStartupHook: () => {},
+              addBeforeShutdownHook: () => {},
+              addShutdownHook: () => {},
+            }),
           }),
           createServiceFactory({
             service: coreServices.rootLifecycle,
             deps: {},
-            factory: async () => ({ addShutdownHook: () => {} }),
+            factory: async () => ({
+              addStartupHook: () => {},
+              addBeforeShutdownHook: () => {},
+              addShutdownHook: () => {},
+            }),
           }),
         ],
       }),
@@ -49,7 +59,7 @@ describe('createSpecializedBackend', () => {
   it('should throw when providing a plugin metadata service implementation', () => {
     expect(() =>
       createSpecializedBackend({
-        services: [
+        defaultServiceFactories: [
           createServiceFactory({
             service: coreServices.pluginMetadata,
             deps: {},

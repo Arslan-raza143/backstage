@@ -17,71 +17,147 @@
 import {
   coreServices,
   createBackendModule,
+  createExtensionPoint,
 } from '@backstage/backend-plugin-api';
-import { loggerToWinstonLogger } from '@backstage/backend-common';
 import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node/alpha';
 import {
   GroupTransformer,
   OrganizationTransformer,
+  ProviderConfigTransformer,
   UserTransformer,
 } from '@backstage/plugin-catalog-backend-module-msgraph';
 import { MicrosoftGraphOrgEntityProvider } from '../processors';
 
 /**
- * Options for {@link catalogModuleMicrosoftGraphOrgEntityProvider}.
+ * Interface for {@link microsoftGraphOrgEntityProviderTransformExtensionPoint}.
  *
- * @alpha
+ * @public
  */
-export interface CatalogModuleMicrosoftGraphOrgEntityProviderOptions {
+export interface MicrosoftGraphOrgEntityProviderTransformsExtensionPoint {
   /**
-   * The function that transforms a user entry in msgraph to an entity.
+   * Set the function that transforms a user entry in msgraph to an entity.
    * Optionally, you can pass separate transformers per provider ID.
    */
-  userTransformer?: UserTransformer | Record<string, UserTransformer>;
+  setUserTransformer(
+    transformer: UserTransformer | Record<string, UserTransformer>,
+  ): void;
 
   /**
-   * The function that transforms a group entry in msgraph to an entity.
+   * Set the function that transforms a group entry in msgraph to an entity.
    * Optionally, you can pass separate transformers per provider ID.
    */
-  groupTransformer?: GroupTransformer | Record<string, GroupTransformer>;
+  setGroupTransformer(
+    transformer: GroupTransformer | Record<string, GroupTransformer>,
+  ): void;
 
   /**
-   * The function that transforms an organization entry in msgraph to an entity.
+   * Set the function that transforms an organization entry in msgraph to an entity.
    * Optionally, you can pass separate transformers per provider ID.
    */
-  organizationTransformer?:
-    | OrganizationTransformer
-    | Record<string, OrganizationTransformer>;
+  setOrganizationTransformer(
+    transformer:
+      | OrganizationTransformer
+      | Record<string, OrganizationTransformer>,
+  ): void;
+
+  /**
+   * Set the function that transforms provider config dynamically.
+   * Optionally, you can pass separate transformers per provider ID.
+   * Note: adjusting fields that are not used on each scheduled ingestion
+   *       (e.g., id, schedule) will have no effect.
+   */
+  setProviderConfigTransformer(
+    transformer:
+      | ProviderConfigTransformer
+      | Record<string, ProviderConfigTransformer>,
+  ): void;
 }
+
+/**
+ * Extension point used to customize the transforms used by the module.
+ *
+ * @public
+ */
+export const microsoftGraphOrgEntityProviderTransformExtensionPoint =
+  createExtensionPoint<MicrosoftGraphOrgEntityProviderTransformsExtensionPoint>(
+    {
+      id: 'catalog.microsoftGraphOrgEntityProvider.transforms',
+    },
+  );
 
 /**
  * Registers the MicrosoftGraphOrgEntityProvider with the catalog processing extension point.
  *
- * @alpha
+ * @public
  */
 export const catalogModuleMicrosoftGraphOrgEntityProvider = createBackendModule(
   {
     pluginId: 'catalog',
     moduleId: 'microsoftGraphOrgEntityProvider',
-    register(
-      env,
-      options?: CatalogModuleMicrosoftGraphOrgEntityProviderOptions,
-    ) {
+    register(env) {
+      let userTransformer:
+        | UserTransformer
+        | Record<string, UserTransformer>
+        | undefined;
+      let groupTransformer:
+        | GroupTransformer
+        | Record<string, GroupTransformer>
+        | undefined;
+      let organizationTransformer:
+        | OrganizationTransformer
+        | Record<string, OrganizationTransformer>
+        | undefined;
+      let providerConfigTransformer:
+        | ProviderConfigTransformer
+        | Record<string, ProviderConfigTransformer>
+        | undefined;
+
+      env.registerExtensionPoint(
+        microsoftGraphOrgEntityProviderTransformExtensionPoint,
+        {
+          setUserTransformer(transformer) {
+            if (userTransformer) {
+              throw new Error('User transformer may only be set once');
+            }
+            userTransformer = transformer;
+          },
+          setGroupTransformer(transformer) {
+            if (groupTransformer) {
+              throw new Error('Group transformer may only be set once');
+            }
+            groupTransformer = transformer;
+          },
+          setOrganizationTransformer(transformer) {
+            if (organizationTransformer) {
+              throw new Error('Organization transformer may only be set once');
+            }
+            organizationTransformer = transformer;
+          },
+          setProviderConfigTransformer(transformer) {
+            if (providerConfigTransformer) {
+              throw new Error('Provider transformer may only be set once');
+            }
+            providerConfigTransformer = transformer;
+          },
+        },
+      );
+
       env.registerInit({
         deps: {
           catalog: catalogProcessingExtensionPoint,
-          config: coreServices.config,
+          config: coreServices.rootConfig,
           logger: coreServices.logger,
           scheduler: coreServices.scheduler,
         },
         async init({ catalog, config, logger, scheduler }) {
           catalog.addEntityProvider(
             MicrosoftGraphOrgEntityProvider.fromConfig(config, {
-              groupTransformer: options?.groupTransformer,
-              logger: loggerToWinstonLogger(logger),
-              organizationTransformer: options?.organizationTransformer,
+              logger,
               scheduler,
-              userTransformer: options?.userTransformer,
+              userTransformer: userTransformer,
+              groupTransformer: groupTransformer,
+              organizationTransformer: organizationTransformer,
+              providerConfigTransformer: providerConfigTransformer,
             }),
           );
         },

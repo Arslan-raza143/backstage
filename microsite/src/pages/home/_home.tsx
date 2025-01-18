@@ -31,45 +31,52 @@ const HomePage = () => {
         <BannerSection diagonalBottomBorder greyBackground>
           <BannerSectionGrid
             header={
-              !hiddenNewsletterBanner && (
-                <div
-                  className={clsx(
-                    'card',
-                    'padding--md',
-                    homeStyles.newsletterBanner,
-                  )}
-                >
-                  <div className="text--left bannerContent">
-                    🗞️ Want to stay up to date with Backstage? Sign up for our{' '}
-                    <Link
-                      to="https://info.backstage.spotify.com/newsletter_subscribe"
-                      className="text--secondary"
-                    >
-                      Newsletter
-                    </Link>
-                    !
-                  </div>
-
+              <>
+                {!hiddenNewsletterBanner && (
                   <div
-                    className={clsx('button button--link', 'bannerCloseButton')}
-                    onClick={() => hideNewsletterBanner(true)}
+                    className={clsx(
+                      'card',
+                      'padding--md',
+                      homeStyles.newsletterBanner,
+                    )}
                   >
-                    <svg
-                      className="text--secondary"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
+                    <div className="text--left bannerContent">
+                      🗞️ Want to stay up to date with Backstage? Sign up for our{' '}
+                      <Link
+                        to="https://info.backstage.spotify.com/newsletter_subscribe"
+                        className="text--secondary"
+                      >
+                        Newsletter
+                      </Link>
+                      !
+                    </div>
+
+                    <div
+                      className={clsx(
+                        'button button--link',
+                        'bannerCloseButton',
+                      )}
+                      onClick={() => hideNewsletterBanner(true)}
                     >
-                      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                    </svg>
+                      <svg
+                        className="text--secondary"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                      </svg>
+                    </div>
                   </div>
-                </div>
-              )
+                )}
+              </>
             }
           >
             <ContentBlock
               className={homeStyles.openPlatformBanner}
-              title={<h1> An open platform for building developer portals</h1>}
+              title={
+                <h1>An open source framework for building developer portals</h1>
+              }
               actionButtons={[
                 {
                   link: 'https://github.com/backstage/backstage#getting-started',
@@ -90,10 +97,12 @@ const HomePage = () => {
               <img
                 className="laptopSvg"
                 src={`${siteConfig.baseUrl}img/laptop.svg`}
+                alt="Illustration of a laptop"
               />
               <img
                 className="laptopScreenGif"
                 src={`${siteConfig.baseUrl}animations/backstage-logos-hero-8.gif`}
+                alt="Animated Backstage Logo"
               />
             </div>
           </BannerSectionGrid>

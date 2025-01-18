@@ -18,14 +18,13 @@ import express, { CookieOptions } from 'express';
 import crypto from 'crypto';
 import { URL } from 'url';
 import {
+  AuthProviderConfig,
+  AuthProviderRouteHandlers,
   BackstageIdentityResponse,
   BackstageSignInResult,
-} from '@backstage/plugin-auth-node';
-import {
-  AuthProviderRouteHandlers,
-  AuthProviderConfig,
   CookieConfigurer,
-} from '../../providers/types';
+  OAuthState,
+} from '@backstage/plugin-auth-node';
 import {
   AuthenticationError,
   InputError,
@@ -42,7 +41,6 @@ import {
   OAuthHandlers,
   OAuthStartRequest,
   OAuthRefreshRequest,
-  OAuthState,
   OAuthLogoutRequest,
 } from './types';
 import { prepareBackstageIdentityResponse } from '../../providers/prepareBackstageIdentityResponse';
@@ -50,7 +48,10 @@ import { prepareBackstageIdentityResponse } from '../../providers/prepareBacksta
 export const THOUSAND_DAYS_MS = 1000 * 24 * 60 * 60 * 1000;
 export const TEN_MINUTES_MS = 600 * 1000;
 
-/** @public */
+/**
+ * @public
+ * @deprecated Use `createOAuthRouteHandlers` from `@backstage/plugin-auth-node` instead
+ */
 export type OAuthAdapterOptions = {
   providerId: string;
   persistScopes?: boolean;
@@ -61,7 +62,10 @@ export type OAuthAdapterOptions = {
   callbackUrl: string;
 };
 
-/** @public */
+/**
+ * @public
+ * @deprecated Use `createOAuthRouteHandlers` from `@backstage/plugin-auth-node` instead
+ */
 export class OAuthAdapter implements AuthProviderRouteHandlers {
   static fromConfig(
     config: AuthProviderConfig,
@@ -187,6 +191,7 @@ export class OAuthAdapter implements AuthProviderRouteHandlers {
           );
         }
         res.redirect(state.redirectUrl);
+        return undefined;
       }
       // post message back to popup if successful
       return postMessageResponse(res, appOrigin, responseObj);

@@ -16,14 +16,26 @@
 
 import { Header } from '@backstage/core-components';
 import { wrapInTestApp } from '@backstage/test-utils';
-import React, { ComponentType } from 'react';
+import React, { ComponentType, PropsWithChildren } from 'react';
 import { WelcomeTitle } from './WelcomeTitle';
 
 export default {
   title: 'Plugins/Home/Components/WelcomeTitle',
-  decorators: [(Story: ComponentType<{}>) => wrapInTestApp(<Story />)],
+  decorators: [
+    (Story: ComponentType<PropsWithChildren<{}>>) => wrapInTestApp(<Story />),
+  ],
 };
 
 export const Default = () => {
   return <Header title={<WelcomeTitle />} pageTitleOverride="Home" />;
+};
+
+export const withLanguage = () => {
+  const languages = ['English', 'Spanish'];
+  return (
+    <Header
+      title={<WelcomeTitle language={languages} />}
+      pageTitleOverride="Home"
+    />
+  );
 };

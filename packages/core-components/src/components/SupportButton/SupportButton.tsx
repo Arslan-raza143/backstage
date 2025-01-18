@@ -14,24 +14,25 @@
  * limitations under the License.
  */
 
-import { useApp } from '@backstage/core-plugin-api';
-import { BackstageTheme } from '@backstage/theme';
+import { configApiRef, useApi, useApp } from '@backstage/core-plugin-api';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
 import DialogActions from '@material-ui/core/DialogActions';
 import IconButton from '@material-ui/core/IconButton';
-import List from '@material-ui/core/List';
-import ListItem from '@material-ui/core/ListItem';
 import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemText from '@material-ui/core/ListItemText';
+import MenuItem from '@material-ui/core/MenuItem';
+import MenuList from '@material-ui/core/MenuList';
 import Popover from '@material-ui/core/Popover';
-import { makeStyles } from '@material-ui/core/styles';
+import { Theme, makeStyles } from '@material-ui/core/styles';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import React, { MouseEventHandler, useState } from 'react';
 import { SupportItem, SupportItemLink, useSupportConfig } from '../../hooks';
 import { HelpIcon } from '../../icons';
 import { Link } from '../Link';
+import { coreComponentsTranslationRef } from '../../translation';
+import { useTranslationRef } from '@backstage/core-plugin-api/alpha';
 
 type SupportButtonProps = {
   title?: string;
@@ -46,6 +47,9 @@ const useStyles = makeStyles(
     popoverList: {
       minWidth: 260,
       maxWidth: 400,
+    },
+    menuItem: {
+      whiteSpace: 'normal',
     },
   },
   { name: 'BackstageSupportButton' },
@@ -63,7 +67,7 @@ const SupportLink = ({ link }: { link: SupportItemLink }) => (
 
 const SupportListItem = ({ item }: { item: SupportItem }) => {
   return (
-    <ListItem>
+    <MenuItem button={false}>
       <ListItemIcon>
         <SupportIcon icon={item.icon} />
       </ListItemIcon>
@@ -78,18 +82,20 @@ const SupportListItem = ({ item }: { item: SupportItem }) => {
           [],
         )}
       />
-    </ListItem>
+    </MenuItem>
   );
 };
 
 export function SupportButton(props: SupportButtonProps) {
+  const { t } = useTranslationRef(coreComponentsTranslationRef);
   const { title, items, children } = props;
   const { items: configItems } = useSupportConfig();
 
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<Element | null>(null);
   const classes = useStyles();
-  const isSmallScreen = useMediaQuery<BackstageTheme>(theme =>
+  const supportConfig = useApi(configApiRef).getOptionalConfig('app.support');
+  const isSmallScreen = useMediaQuery<Theme>(theme =>
     theme.breakpoints.down('sm'),
   );
 
@@ -101,6 +107,10 @@ export function SupportButton(props: SupportButtonProps) {
   const popoverCloseHandler = () => {
     setPopoverOpen(false);
   };
+
+  if (!supportConfig) {
+    return null;
+  }
 
   return (
     <>
@@ -123,7 +133,7 @@ export function SupportButton(props: SupportButtonProps) {
             onClick={onClickHandler}
             startIcon={<HelpIcon />}
           >
-            Support
+            {t('supportButton.title')}
           </Button>
         )}
       </Box>
@@ -141,28 +151,40 @@ export function SupportButton(props: SupportButtonProps) {
         }}
         onClose={popoverCloseHandler}
       >
-        <List className={classes.popoverList}>
+        <MenuList
+          className={classes.popoverList}
+          autoFocusItem={Boolean(anchorEl)}
+        >
           {title && (
-            <ListItem alignItems="flex-start">
+            <MenuItem
+              button={false}
+              alignItems="flex-start"
+              className={classes.menuItem}
+            >
               <Typography variant="subtitle1">{title}</Typography>
-            </ListItem>
+            </MenuItem>
           )}
           {React.Children.map(children, (child, i) => (
-            <ListItem alignItems="flex-start" key={`child-${i}`}>
+            <MenuItem
+              button={false}
+              alignItems="flex-start"
+              key={`child-${i}`}
+              className={classes.menuItem}
+            >
               {child}
-            </ListItem>
+            </MenuItem>
           ))}
           {(items ?? configItems).map((item, i) => (
             <SupportListItem item={item} key={`item-${i}`} />
           ))}
-        </List>
+        </MenuList>
         <DialogActions>
           <Button
             color="primary"
             onClick={popoverCloseHandler}
             aria-label="Close"
           >
-            Close
+            {t('supportButton.close')}
           </Button>
         </DialogActions>
       </Popover>

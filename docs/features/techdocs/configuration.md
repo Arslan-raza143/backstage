@@ -20,7 +20,7 @@ techdocs:
     # spin up the techdocs-container docker image or to run mkdocs locally (assuming all the dependencies are taken care of).
     # You want to change this to 'local' if you are running Backstage using your own custom Docker setup and want to avoid running
     # into Docker in Docker situation. Read more here
-    # https://backstage.io/docs/features/techdocs/getting-started#disable-docker-in-docker-situation-optional
+    # https://backstage.io/docs/features/techdocs/getting-started/#disabling-docker-in-docker-situation-optional
 
     runIn: 'docker'
 
@@ -48,6 +48,15 @@ techdocs:
       # Note that https://www.mkdocs.org/user-guide/configuration/#edit_uri behavior
       # will be broken in these scenarios.
       legacyCopyReadmeMdToIndexMd: false
+
+      # (Optional) Configures the default plugins which should be added
+      # automatically to every mkdocs.yaml file. This simplifies the usage as
+      # e.g. styling plugins can be added once for all.
+      # Make sure that the defined plugins are installed locally / in the Docker
+      # image.
+      # By default, only the techdocs-core plugin will be added (except if
+      # omitTechdocsCorePlugin: true).
+      defaultPlugins: ['techdocs-core']
 
   # techdocs.builder can be either 'local' or 'external'.
   # Using the default build strategy, if builder is set to 'local' and you open a TechDocs page,
@@ -158,6 +167,12 @@ techdocs:
       # (Required) Azure Blob Storage Container Name
       containerName: 'techdocs-storage'
 
+      # (Optional) Azure blob storage connection string.
+      # Can be useful for local testing through azurite
+      # Defaults to undefined
+      # if provided, takes higher priority, 'techdocs.publisher.azureBlobStorage.credentials' will become irrelevant
+      connectionString: ''
+
       # (Required) An account name is required to write to a storage blob container.
       # https://docs.microsoft.com/en-us/rest/api/storageservices/authorize-with-shared-key
       credentials:
@@ -188,7 +203,7 @@ techdocs:
 
     # (Optional) The time (in milliseconds) that the TechDocs backend will wait
     # for a cache service to respond before continuing on as though the cached
-    # object was not found (e.g. when the cache sercice is unavailable). The
+    # object was not found (e.g. when the cache service is unavailable). The
     # default value is 1000
     readTimeout: 500
 ```

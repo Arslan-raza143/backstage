@@ -14,94 +14,52 @@
  * limitations under the License.
  */
 
-import {
-  Backend,
-  cacheServiceFactory,
-  configServiceFactory,
-  createSpecializedBackend,
-  databaseServiceFactory,
-  discoveryServiceFactory,
-  httpRouterServiceFactory,
-  rootHttpRouterServiceFactory,
-  lifecycleServiceFactory,
-  rootLifecycleServiceFactory,
-  loggerServiceFactory,
-  permissionsServiceFactory,
-  rootLoggerServiceFactory,
-  schedulerServiceFactory,
-  tokenManagerServiceFactory,
-  urlReaderServiceFactory,
-  identityServiceFactory,
-} from '@backstage/backend-app-api';
-import {
-  ServiceFactory,
-  ServiceFactoryOrFunction,
-  SharedBackendEnvironment,
-} from '@backstage/backend-plugin-api';
-
-// Internal import of the type to avoid needing to export this.
-// eslint-disable-next-line @backstage/no-forbidden-package-imports
-import type { InternalSharedBackendEnvironment } from '@backstage/backend-plugin-api/src/wiring/createSharedEnvironment';
+import { Backend, createSpecializedBackend } from '@backstage/backend-app-api';
+import { authServiceFactory } from '@backstage/backend-defaults/auth';
+import { cacheServiceFactory } from '@backstage/backend-defaults/cache';
+import { databaseServiceFactory } from '@backstage/backend-defaults/database';
+import { discoveryServiceFactory } from '@backstage/backend-defaults/discovery';
+import { httpAuthServiceFactory } from '@backstage/backend-defaults/httpAuth';
+import { httpRouterServiceFactory } from '@backstage/backend-defaults/httpRouter';
+import { lifecycleServiceFactory } from '@backstage/backend-defaults/lifecycle';
+import { loggerServiceFactory } from '@backstage/backend-defaults/logger';
+import { permissionsServiceFactory } from '@backstage/backend-defaults/permissions';
+import { permissionsRegistryServiceFactory } from '@backstage/backend-defaults/permissionsRegistry';
+import { rootConfigServiceFactory } from '@backstage/backend-defaults/rootConfig';
+import { rootHealthServiceFactory } from '@backstage/backend-defaults/rootHealth';
+import { rootHttpRouterServiceFactory } from '@backstage/backend-defaults/rootHttpRouter';
+import { rootLifecycleServiceFactory } from '@backstage/backend-defaults/rootLifecycle';
+import { rootLoggerServiceFactory } from '@backstage/backend-defaults/rootLogger';
+import { schedulerServiceFactory } from '@backstage/backend-defaults/scheduler';
+import { urlReaderServiceFactory } from '@backstage/backend-defaults/urlReader';
+import { userInfoServiceFactory } from '@backstage/backend-defaults/userInfo';
+import { eventsServiceFactory } from '@backstage/plugin-events-node';
 
 export const defaultServiceFactories = [
-  cacheServiceFactory(),
-  configServiceFactory(),
-  databaseServiceFactory(),
-  discoveryServiceFactory(),
-  httpRouterServiceFactory(),
-  identityServiceFactory(),
-  lifecycleServiceFactory(),
-  loggerServiceFactory(),
-  permissionsServiceFactory(),
-  rootHttpRouterServiceFactory(),
-  rootLifecycleServiceFactory(),
-  rootLoggerServiceFactory(),
-  schedulerServiceFactory(),
-  tokenManagerServiceFactory(),
-  urlReaderServiceFactory(),
+  authServiceFactory,
+  cacheServiceFactory,
+  rootConfigServiceFactory,
+  databaseServiceFactory,
+  discoveryServiceFactory,
+  httpAuthServiceFactory,
+  httpRouterServiceFactory,
+  lifecycleServiceFactory,
+  loggerServiceFactory,
+  permissionsServiceFactory,
+  permissionsRegistryServiceFactory,
+  rootHealthServiceFactory,
+  rootHttpRouterServiceFactory,
+  rootLifecycleServiceFactory,
+  rootLoggerServiceFactory,
+  schedulerServiceFactory,
+  userInfoServiceFactory,
+  urlReaderServiceFactory,
+  eventsServiceFactory,
 ];
 
 /**
  * @public
  */
-export interface CreateBackendOptions {
-  env?: SharedBackendEnvironment;
-  services?: ServiceFactoryOrFunction[];
-}
-
-/**
- * @public
- */
-export function createBackend(options?: CreateBackendOptions): Backend {
-  const services = new Array<ServiceFactory>();
-
-  // Highest priority: Services passed directly to createBackend
-  const providedServices = (options?.services ?? []).map(sf =>
-    typeof sf === 'function' ? sf() : sf,
-  );
-  services.push(...providedServices);
-
-  // Middle priority: Services from the shared environment
-  if (options?.env) {
-    const env = options.env as unknown as InternalSharedBackendEnvironment;
-    if (env.version !== 'v1') {
-      throw new Error(
-        `Shared environment version '${env.version}' is invalid or not supported`,
-      );
-    }
-
-    const environmentServices =
-      env.services?.filter(
-        sf => !services.some(({ service }) => sf.service.id === service.id),
-      ) ?? [];
-    services.push(...environmentServices);
-  }
-
-  // Lowest priority: Default services that are not already provided by environment or directly to createBackend
-  const defaultServices = defaultServiceFactories.filter(
-    sf => !services.some(({ service }) => service.id === sf.service.id),
-  );
-  services.push(...defaultServices);
-
-  return createSpecializedBackend({ services });
+export function createBackend(): Backend {
+  return createSpecializedBackend({ defaultServiceFactories });
 }

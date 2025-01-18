@@ -15,13 +15,22 @@
  */
 
 import {
-  readTaskScheduleDefinitionFromConfig,
-  TaskScheduleDefinition,
-} from '@backstage/backend-tasks';
+  SchedulerServiceTaskScheduleDefinition,
+  readSchedulerServiceTaskScheduleDefinitionFromConfig,
+} from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 
 const DEFAULT_CATALOG_PATH = '/catalog-info.yaml';
 const DEFAULT_PROVIDER_ID = 'default';
+
+export const DEFAULT_GITHUB_ENTITY_PROVIDER_CONFIG_SCHEDULE = {
+  frequency: {
+    hours: 3,
+  },
+  timeout: {
+    hours: 1,
+  },
+};
 
 export type GithubEntityProviderConfig = {
   id: string;
@@ -33,9 +42,10 @@ export type GithubEntityProviderConfig = {
     branch?: string;
     topic?: GithubTopicFilters;
     allowForks?: boolean;
+    visibility?: string[];
   };
   validateLocationsExist: boolean;
-  schedule?: TaskScheduleDefinition;
+  schedule?: SchedulerServiceTaskScheduleDefinition;
 };
 
 export type GithubTopicFilters = {
@@ -85,6 +95,9 @@ function readProviderConfig(
 
   const catalogPathContainsWildcard = catalogPath.includes('*');
 
+  const visibilityFilterInclude =
+    config?.getOptionalStringArray('filters.visibility');
+
   if (validateLocationsExist && catalogPathContainsWildcard) {
     throw Error(
       `Error while processing GitHub provider config. The catalog path ${catalogPath} contains a wildcard, which is incompatible with validation of locations existing before emitting them. Ensure that validateLocationsExist is set to false.`,
@@ -92,8 +105,10 @@ function readProviderConfig(
   }
 
   const schedule = config.has('schedule')
-    ? readTaskScheduleDefinitionFromConfig(config.getConfig('schedule'))
-    : undefined;
+    ? readSchedulerServiceTaskScheduleDefinitionFromConfig(
+        config.getConfig('schedule'),
+      )
+    : DEFAULT_GITHUB_ENTITY_PROVIDER_CONFIG_SCHEDULE;
 
   return {
     id,
@@ -110,6 +125,7 @@ function readProviderConfig(
         include: topicFilterInclude,
         exclude: topicFilterExclude,
       },
+      visibility: visibilityFilterInclude,
     },
     schedule,
     validateLocationsExist,

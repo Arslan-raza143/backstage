@@ -37,6 +37,8 @@ Options:
   -v --verbose
   --omitTechdocsCoreMkdocsPlugin
   --legacyCopyReadmeMdToIndexMd
+  --defaultPlugin [defaultPlugins...]
+  --runAsDefaultUser
   -h, --help
 ```
 
@@ -81,6 +83,7 @@ Options:
   --awsS3sse <AWS SSE>
   --awsS3ForcePathStyle
   --awsBucketRootPath <AWS BUCKET ROOT PATH>
+  --awsMaxAttempts <AWS MAX ATTEMPTS>
   --osCredentialId <OPENSTACK SWIFT APPLICATION CREDENTIAL ID>
   --osSecret <OPENSTACK SWIFT APPLICATION CREDENTIAL SECRET>
   --osAuthUrl <OPENSTACK SWIFT AUTHURL>
@@ -105,6 +108,10 @@ Options:
   -v --verbose
   --preview-app-bundle-path <PATH_TO_BUNDLE>
   --preview-app-port <PORT>
+  -c, --mkdocs-config-file-name <FILENAME>
+  --mkdocs-parameter-clean
+  --mkdocs-parameter-dirtyreload
+  --mkdocs-parameter-strict
   -h, --help
 ```
 

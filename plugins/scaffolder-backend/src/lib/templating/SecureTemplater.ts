@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
-import { VM } from 'vm2';
-import { resolvePackagePath } from '@backstage/backend-common';
+import { Isolate } from 'isolated-vm';
+import { resolvePackagePath } from '@backstage/backend-plugin-api';
+import {
+  TemplateFilter as _TemplateFilter,
+  TemplateGlobal as _TemplateGlobal,
+} from '@backstage/plugin-scaffolder-node';
 import fs from 'fs-extra';
 import { JsonValue } from '@backstage/types';
+import { getMajorNodeVersion, isNoNodeSnapshotOptionProvided } from './helpers';
 
 // language=JavaScript
 const mkScript = (nunjucksSource: string) => `
@@ -30,6 +35,7 @@ const { render, renderCompat } = (() => {
 
   const env = module.exports.configure({
     autoescape: false,
+    ...JSON.parse(nunjucksConfigs),
     tags: {
       variableStart: '\${{',
       variableEnd: '}}',
@@ -38,6 +44,7 @@ const { render, renderCompat } = (() => {
 
   const compatEnv = module.exports.configure({
     autoescape: false,
+    ...JSON.parse(nunjucksConfigs),
     tags: {
       variableStart: '{{',
       variableEnd: '}}',
@@ -45,20 +52,17 @@ const { render, renderCompat } = (() => {
   });
   compatEnv.addFilter('jsonify', compatEnv.getFilter('dump'));
 
-  if (typeof templateFilters !== 'undefined') {
-    for (const [filterName, filterFn] of Object.entries(templateFilters)) {
-      env.addFilter(filterName, (...args) => JSON.parse(filterFn(...args)));
-    }
+  const handleFunctionResult = (value) => {
+    return value === '' ? undefined : JSON.parse(value);
+  };
+  for (const name of JSON.parse(availableTemplateFilters)) {
+    env.addFilter(name, (...args) => handleFunctionResult(callFilter(name, args)));
   }
-
-  if (typeof templateGlobals !== 'undefined') {
-    for (const [globalName, global] of Object.entries(templateGlobals)) {
-      if (typeof global === 'function') {
-        env.addGlobal(globalName, (...args) => JSON.parse(global(...args)));
-      } else {
-        env.addGlobal(globalName, JSON.parse(global));
-      }
-    }
+  for (const [name, value] of Object.entries(JSON.parse(availableTemplateGlobals))) {
+    env.addGlobal(name, value);
+  }
+  for (const name of JSON.parse(availableTemplateCallbacks)) {
+    env.addGlobal(name, (...args) => handleFunctionResult(callGlobal(name, args)));
   }
 
   let uninstallCompat = undefined;
@@ -92,21 +96,26 @@ const { render, renderCompat } = (() => {
 })();
 `;
 
-/** @public */
-export type TemplateFilter = (...args: JsonValue[]) => JsonValue | undefined;
+/**
+ * @public
+ * @deprecated Import from `@backstage/plugin-scaffolder-node` instead.
+ */
+export type TemplateFilter = _TemplateFilter;
 
-/** @public */
-export type TemplateGlobal =
-  | ((...args: JsonValue[]) => JsonValue | undefined)
-  | JsonValue;
+/**
+ * @public
+ * @deprecated Import from `@backstage/plugin-scaffolder-node` instead.
+ */
+export type TemplateGlobal = _TemplateGlobal;
 
-export interface SecureTemplaterOptions {
+interface SecureTemplaterOptions {
   /* Enables jinja compatibility and the "jsonify" filter */
   cookiecutterCompat?: boolean;
   /* Extra user-provided nunjucks filters */
   templateFilters?: Record<string, TemplateFilter>;
   /* Extra user-provided nunjucks globals */
   templateGlobals?: Record<string, TemplateGlobal>;
+  nunjucksConfigs?: { trimBlocks?: boolean; lstripBlocks?: boolean };
 }
 
 export type SecureTemplateRenderer = (
@@ -116,35 +125,24 @@ export type SecureTemplateRenderer = (
 
 export class SecureTemplater {
   static async loadRenderer(options: SecureTemplaterOptions = {}) {
-    const { cookiecutterCompat, templateFilters, templateGlobals } = options;
-    const sandbox: Record<string, any> = {};
+    const {
+      cookiecutterCompat,
+      templateFilters = {},
+      templateGlobals = {},
+      nunjucksConfigs = {},
+    } = options;
 
-    if (templateFilters) {
-      sandbox.templateFilters = Object.fromEntries(
-        Object.entries(templateFilters)
-          .filter(([_, filterFunction]) => !!filterFunction)
-          .map(([filterName, filterFunction]) => [
-            filterName,
-            (...args: JsonValue[]) => JSON.stringify(filterFunction(...args)),
-          ]),
+    const nodeVersion = getMajorNodeVersion();
+    if (nodeVersion >= 20 && !isNoNodeSnapshotOptionProvided()) {
+      throw new Error(
+        `When using Node.js version 20 or newer, the scaffolder backend plugin requires that it be started with the --no-node-snapshot option. 
+        Please make sure that you have NODE_OPTIONS=--no-node-snapshot in your environment.`,
       );
     }
-    if (templateGlobals) {
-      sandbox.templateGlobals = Object.fromEntries(
-        Object.entries(templateGlobals)
-          .filter(([_, global]) => !!global)
-          .map(([globalName, global]) => {
-            if (typeof global === 'function') {
-              return [
-                globalName,
-                (...args: JsonValue[]) => JSON.stringify(global(...args)),
-              ];
-            }
-            return [globalName, JSON.stringify(global)];
-          }),
-      );
-    }
-    const vm = new VM({ sandbox });
+
+    const isolate = new Isolate({ memoryLimit: 128 });
+    const context = await isolate.createContext();
+    const contextGlobal = context.global;
 
     const nunjucksSource = await fs.readFile(
       resolvePackagePath(
@@ -154,20 +152,79 @@ export class SecureTemplater {
       'utf-8',
     );
 
-    vm.run(mkScript(nunjucksSource));
+    const nunjucksScript = await isolate.compileScript(
+      mkScript(nunjucksSource),
+    );
+
+    await contextGlobal.set('nunjucksConfigs', JSON.stringify(nunjucksConfigs));
+
+    const availableFilters = Object.keys(templateFilters);
+
+    await contextGlobal.set(
+      'availableTemplateFilters',
+      JSON.stringify(availableFilters),
+    );
+
+    const globalCallbacks = [];
+    const globalValues: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(templateGlobals)) {
+      if (typeof value === 'function') {
+        globalCallbacks.push(name);
+      } else {
+        globalValues[name] = value;
+      }
+    }
+
+    await contextGlobal.set(
+      'availableTemplateGlobals',
+      JSON.stringify(globalValues),
+    );
+    await contextGlobal.set(
+      'availableTemplateCallbacks',
+      JSON.stringify(globalCallbacks),
+    );
+
+    await contextGlobal.set(
+      'callFilter',
+      (filterName: string, args: JsonValue[]) => {
+        if (!Object.hasOwn(templateFilters, filterName)) {
+          return '';
+        }
+        const rz = templateFilters[filterName](...args);
+        return rz === undefined ? '' : JSON.stringify(rz);
+      },
+    );
+
+    await contextGlobal.set(
+      'callGlobal',
+      (globalName: string, args: JsonValue[]) => {
+        if (!Object.hasOwn(templateGlobals, globalName)) {
+          return '';
+        }
+        const global = templateGlobals[globalName];
+        if (typeof global !== 'function') {
+          return '';
+        }
+        const rz = global(...args);
+        return rz === undefined ? '' : JSON.stringify(rz);
+      },
+    );
+
+    await nunjucksScript.run(context);
 
     const render: SecureTemplateRenderer = (template, values) => {
-      if (!vm) {
+      if (!context) {
         throw new Error('SecureTemplater has not been initialized');
       }
-      vm.setGlobal('templateStr', template);
-      vm.setGlobal('templateValues', JSON.stringify(values));
+
+      contextGlobal.setSync('templateStr', String(template));
+      contextGlobal.setSync('templateValues', JSON.stringify(values));
 
       if (cookiecutterCompat) {
-        return vm.run(`renderCompat(templateStr, templateValues)`);
+        return context.evalSync(`renderCompat(templateStr, templateValues)`);
       }
 
-      return vm.run(`render(templateStr, templateValues)`);
+      return context.evalSync(`render(templateStr, templateValues)`);
     };
     return render;
   }

@@ -18,13 +18,13 @@ import { GetEntityFacetsResponse } from '@backstage/catalog-client';
 import { Entity } from '@backstage/catalog-model';
 import { ApiProvider } from '@backstage/core-app-api';
 import { alertApiRef } from '@backstage/core-plugin-api';
-import { renderWithEffects, TestApiRegistry } from '@backstage/test-utils';
-import { fireEvent, waitFor, screen } from '@testing-library/react';
+import { renderInTestApp, TestApiRegistry } from '@backstage/test-utils';
+import { fireEvent, waitFor, screen, within } from '@testing-library/react';
 import { capitalize } from 'lodash';
 import { default as React } from 'react';
 import { catalogApiRef } from '../../api';
 import { EntityKindFilter } from '../../filters';
-import { MockEntityListContextProvider } from '../../testUtils/providers';
+import { MockEntityListContextProvider } from '@backstage/plugin-catalog-react/testUtils';
 import { EntityKindPicker } from './EntityKindPicker';
 
 const entities: Entity[] = [
@@ -75,10 +75,12 @@ describe('<EntityKindPicker/>', () => {
   );
 
   it('renders available entity kinds', async () => {
-    await renderWithEffects(
+    await renderInTestApp(
       <ApiProvider apis={apis}>
         <MockEntityListContextProvider
-          value={{ filters: { kind: new EntityKindFilter('component') } }}
+          value={{
+            filters: { kind: new EntityKindFilter('component', 'Component') },
+          }}
         >
           <EntityKindPicker />
         </MockEntityListContextProvider>
@@ -87,7 +89,7 @@ describe('<EntityKindPicker/>', () => {
     expect(screen.getByText('Kind')).toBeInTheDocument();
 
     const input = screen.getByTestId('select');
-    fireEvent.click(input);
+    fireEvent.mouseDown(within(input).getByRole('button'));
 
     await waitFor(() => screen.getByText('Domain'));
 
@@ -102,11 +104,11 @@ describe('<EntityKindPicker/>', () => {
 
   it('sets the selected kind filter', async () => {
     const updateFilters = jest.fn();
-    await renderWithEffects(
+    await renderInTestApp(
       <ApiProvider apis={apis}>
         <MockEntityListContextProvider
           value={{
-            filters: { kind: new EntityKindFilter('component') },
+            filters: { kind: new EntityKindFilter('component', 'Component') },
             updateFilters,
           }}
         >
@@ -115,20 +117,20 @@ describe('<EntityKindPicker/>', () => {
       </ApiProvider>,
     );
     const input = screen.getByTestId('select');
-    fireEvent.click(input);
+    fireEvent.mouseDown(within(input).getByRole('button'));
 
     await waitFor(() => screen.getByText('Domain'));
     fireEvent.click(screen.getByText('Domain'));
 
     expect(updateFilters).toHaveBeenLastCalledWith({
-      kind: new EntityKindFilter('domain'),
+      kind: new EntityKindFilter('domain', 'Domain'),
     });
   });
 
   it('respects the query parameter filter value', async () => {
     const updateFilters = jest.fn();
     const queryParameters = { kind: 'group' };
-    await renderWithEffects(
+    await renderInTestApp(
       <ApiProvider apis={apis}>
         <MockEntityListContextProvider
           value={{
@@ -143,12 +145,12 @@ describe('<EntityKindPicker/>', () => {
     );
 
     expect(updateFilters).toHaveBeenLastCalledWith({
-      kind: new EntityKindFilter('group'),
+      kind: new EntityKindFilter('group', 'Group'),
     });
   });
 
   it('renders unknown kinds provided in query parameters', async () => {
-    await renderWithEffects(
+    await renderInTestApp(
       <ApiProvider apis={apis}>
         <MockEntityListContextProvider
           value={{ queryParameters: { kind: 'FROb' } }}
@@ -162,7 +164,7 @@ describe('<EntityKindPicker/>', () => {
   });
 
   it('limits kinds when allowedKinds is set', async () => {
-    await renderWithEffects(
+    await renderInTestApp(
       <ApiProvider apis={apis}>
         <MockEntityListContextProvider>
           <EntityKindPicker allowedKinds={['component', 'domain']} />
@@ -171,7 +173,7 @@ describe('<EntityKindPicker/>', () => {
     );
 
     const input = screen.getByTestId('select');
-    fireEvent.click(input);
+    fireEvent.mouseDown(within(input).getByRole('button'));
 
     expect(
       screen.getByRole('option', { name: 'Component' }),
@@ -183,7 +185,7 @@ describe('<EntityKindPicker/>', () => {
   });
 
   it('renders kind from the query parameter even when not in allowedKinds', async () => {
-    await renderWithEffects(
+    await renderInTestApp(
       <ApiProvider apis={apis}>
         <MockEntityListContextProvider
           value={{ queryParameters: { kind: 'Frob' } }}
@@ -196,7 +198,7 @@ describe('<EntityKindPicker/>', () => {
     expect(screen.getByText('Frob')).toBeInTheDocument();
 
     const input = screen.getByTestId('select');
-    fireEvent.click(input);
+    fireEvent.mouseDown(within(input).getByRole('button'));
     expect(screen.getByRole('option', { name: 'Domain' })).toBeInTheDocument();
   });
 });

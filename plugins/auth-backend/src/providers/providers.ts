@@ -30,8 +30,9 @@ import { oidc } from './oidc';
 import { okta } from './okta';
 import { onelogin } from './onelogin';
 import { saml } from './saml';
-import { AuthProviderFactory } from './types';
 import { bitbucketServer } from './bitbucketServer';
+import { easyAuth } from './azure-easyauth';
+import { AuthProviderFactory } from '@backstage/plugin-auth-node';
 
 /**
  * All built-in auth provider integrations.
@@ -56,6 +57,7 @@ export const providers = Object.freeze({
   okta,
   onelogin,
   saml,
+  easyAuth,
 });
 
 /**
@@ -73,6 +75,7 @@ export const defaultAuthProviderFactories: {
   okta: okta.create(),
   auth0: auth0.create(),
   microsoft: microsoft.create(),
+  easyAuth: easyAuth.create(),
   oauth2: oauth2.create(),
   oidc: oidc.create(),
   onelogin: onelogin.create(),

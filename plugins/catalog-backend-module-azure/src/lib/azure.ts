@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-import fetch from 'node-fetch';
 import {
+  AzureDevOpsCredentialsProvider,
   AzureIntegrationConfig,
-  getAzureRequestOptions,
 } from '@backstage/integration';
 
 export interface CodeSearchResponse {
@@ -37,16 +36,28 @@ export interface CodeSearchResultItem {
   branch?: string;
 }
 
+interface CodeSearchRequest {
+  searchText: string;
+  $orderBy: Array<{ field: string; sortOrder: string }>;
+  $skip: number;
+  $top: number;
+  filters?: {
+    Branch: string[];
+  };
+}
+
 const isCloud = (host: string) => host === 'dev.azure.com';
 const PAGE_SIZE = 1000;
 
 // codeSearch returns all files that matches the given search path.
 export async function codeSearch(
+  credentialsProvider: AzureDevOpsCredentialsProvider,
   azureConfig: AzureIntegrationConfig,
   org: string,
   project: string,
   repo: string,
   path: string,
+  branch: string,
 ): Promise<CodeSearchResultItem[]> {
   const searchBaseUrl = isCloud(azureConfig.host)
     ? 'https://almsearch.dev.azure.com'
@@ -57,16 +68,33 @@ export async function codeSearch(
   let hasMorePages = true;
 
   do {
+    const credentials = await credentialsProvider.getCredentials({
+      url: `https://${azureConfig.host}/${org}`,
+    });
+
+    const searchRequestBody: CodeSearchRequest = {
+      searchText: `path:${path} repo:${repo || '*'} proj:${project || '*'}`,
+      $orderBy: [
+        {
+          field: 'path',
+          sortOrder: 'ASC',
+        },
+      ],
+      $skip: items.length,
+      $top: PAGE_SIZE,
+    };
+
+    if (branch) {
+      searchRequestBody.filters = { Branch: [branch] };
+    }
+
     const response = await fetch(searchUrl, {
-      ...getAzureRequestOptions(azureConfig, {
+      headers: {
+        ...credentials?.headers,
         'Content-Type': 'application/json',
-      }),
+      },
       method: 'POST',
-      body: JSON.stringify({
-        searchText: `path:${path} repo:${repo || '*'} proj:${project || '*'}`,
-        $skip: items.length,
-        $top: PAGE_SIZE,
-      }),
+      body: JSON.stringify(searchRequestBody),
     });
 
     if (response.status !== 200) {

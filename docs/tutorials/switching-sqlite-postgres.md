@@ -19,9 +19,8 @@ switch between database backends.
 
 First, add PostgreSQL to your `backend` package:
 
-```bash
-# From your Backstage root directory
-yarn add --cwd packages/backend pg
+```bash title="From your Backstage root directory"
+yarn --cwd packages/backend add pg
 ```
 
 ## Add PostgreSQL configuration
@@ -37,7 +36,7 @@ backend:
     connection: ':memory:'
     # highlight-remove-end
     # highlight-add-start
-    # config options: https://node-postgres.com/api/client
+    # config options: https://node-postgres.com/apis/client
     client: pg
     connection:
       host: ${POSTGRES_HOST}
@@ -72,7 +71,7 @@ backend:
     connection: ':memory:'
     # highlight-remove-end
     # highlight-add-start
-    # config options: https://node-postgres.com/api/client
+    # config options: https://node-postgres.com/apis/client
     client: pg
     connection:
       host: ${POSTGRES_HOST}

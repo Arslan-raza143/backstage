@@ -15,10 +15,9 @@
  */
 
 import {
-  createBackendModule,
   coreServices,
+  createBackendModule,
 } from '@backstage/backend-plugin-api';
-import { loggerToWinstonLogger } from '@backstage/backend-common';
 import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node/alpha';
 import { PuppetDbEntityProvider } from '../providers/PuppetDbEntityProvider';
 
@@ -29,19 +28,19 @@ import { PuppetDbEntityProvider } from '../providers/PuppetDbEntityProvider';
  */
 export const catalogModulePuppetDbEntityProvider = createBackendModule({
   pluginId: 'catalog',
-  moduleId: 'puppetDbEntityProvider',
+  moduleId: 'puppetdb-entity-provider',
   register(env) {
     env.registerInit({
       deps: {
         catalog: catalogProcessingExtensionPoint,
-        config: coreServices.config,
+        config: coreServices.rootConfig,
         logger: coreServices.logger,
         scheduler: coreServices.scheduler,
       },
       async init({ catalog, config, logger, scheduler }) {
         catalog.addEntityProvider(
           PuppetDbEntityProvider.fromConfig(config, {
-            logger: loggerToWinstonLogger(logger),
+            logger,
             scheduler,
           }),
         );

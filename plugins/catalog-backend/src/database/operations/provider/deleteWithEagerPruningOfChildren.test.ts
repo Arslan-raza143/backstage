@@ -18,40 +18,22 @@ import { TestDatabaseId, TestDatabases } from '@backstage/backend-test-utils';
 import { Knex } from 'knex';
 import * as uuid from 'uuid';
 import { applyDatabaseMigrations } from '../../migrations';
-import { DbRefreshStateReferencesRow, DbRefreshStateRow } from '../../tables';
+import {
+  DbRefreshStateReferencesRow,
+  DbRefreshStateRow,
+  DbRelationsRow,
+} from '../../tables';
 import { deleteWithEagerPruningOfChildren } from './deleteWithEagerPruningOfChildren';
 
 jest.setTimeout(60_000);
 
 describe('deleteWithEagerPruningOfChildren', () => {
-  const databases = TestDatabases.create({
-    ids: ['MYSQL_8', 'POSTGRES_13', 'POSTGRES_9', 'SQLITE_3'],
-  });
+  const databases = TestDatabases.create();
 
   async function createDatabase(databaseId: TestDatabaseId) {
     const knex = await databases.init(databaseId);
     await applyDatabaseMigrations(knex);
     return knex;
-  }
-
-  async function run(
-    knex: Knex,
-    options: { entityRefs: string[]; sourceKey: string },
-  ): Promise<number> {
-    let result: number;
-    await knex.transaction(
-      async tx => {
-        // We can't return here, as knex swallows the return type in case the
-        // transaction is rolled back:
-        // https://github.com/knex/knex/blob/e37aeaa31c8ef9c1b07d2e4d3ec6607e557d800d/lib/transaction.js#L136
-        result = await deleteWithEagerPruningOfChildren({ tx, ...options });
-      },
-      {
-        // If we explicitly trigger a rollback, don't fail.
-        doNotRejectOnRollback: true,
-      },
-    );
-    return result!;
   }
 
   async function insertReference(
@@ -61,6 +43,22 @@ describe('deleteWithEagerPruningOfChildren', () => {
     return knex<DbRefreshStateReferencesRow>('refresh_state_references').insert(
       refs,
     );
+  }
+
+  async function insertRelation(
+    knex: Knex,
+    ...relations: { from: string; to: string }[]
+  ) {
+    for (const rel of relations) {
+      await knex<DbRelationsRow>('relations').insert({
+        originating_entity_id: await knex<DbRefreshStateRow>('refresh_state')
+          .select('entity_id')
+          .then(rows => rows[0].entity_id), // doesn't matter which one, this is consumed pre-deletion
+        source_entity_ref: rel.from,
+        target_entity_ref: rel.to,
+        type: 'fake',
+      });
+    }
   }
 
   async function insertEntity(knex: Knex, ...entityRefs: string[]) {
@@ -84,6 +82,14 @@ describe('deleteWithEagerPruningOfChildren', () => {
     return rows.map(r => r.entity_ref);
   }
 
+  async function entitiesMarkedForStitching(knex: Knex) {
+    const rows = await knex<DbRefreshStateRow>('refresh_state')
+      .orderBy('entity_ref')
+      .select('entity_ref')
+      .where('result_hash', '=', 'force-stitching');
+    return rows.map(r => r.entity_ref);
+  }
+
   it.each(databases.eachSupportedId())(
     'works for the simple path, %p',
     async databaseId => {
@@ -98,7 +104,7 @@ describe('deleteWithEagerPruningOfChildren', () => {
 
           Scenario: P1 issues delete for E1 and E3
 
-          Result: E1, E2, and E3 deleted; E4 and E5 remain
+          Result: E1, E2, and E3 deleted; E4 and E5 remain; E4 marked for stitching because it had a relation to a deleted entity
        */
       const knex = await createDatabase(databaseId);
       await insertEntity(knex, 'E1', 'E2', 'E3', 'E4', 'E5');
@@ -110,8 +116,14 @@ describe('deleteWithEagerPruningOfChildren', () => {
         { source_key: 'P1', target_entity_ref: 'E4' },
         { source_key: 'P2', target_entity_ref: 'E5' },
       );
-      await run(knex, { sourceKey: 'P1', entityRefs: ['E1', 'E3'] });
+      await insertRelation(knex, { from: 'E4', to: 'E2' });
+      await deleteWithEagerPruningOfChildren({
+        knex,
+        sourceKey: 'P1',
+        entityRefs: ['E1', 'E3'],
+      });
       await expect(remainingEntities(knex)).resolves.toEqual(['E4', 'E5']);
+      await expect(entitiesMarkedForStitching(knex)).resolves.toEqual(['E4']);
     },
   );
 
@@ -129,7 +141,7 @@ describe('deleteWithEagerPruningOfChildren', () => {
 
           Scenario: P1 issues delete for E1
 
-          Result: E1 deleted; E2 remains
+          Result: E1 deleted; E2 remains; E2 marked for stitching because it had a relation to a deleted entity
        */
       const knex = await createDatabase(databaseId);
       await insertEntity(knex, 'E1', 'E2');
@@ -139,8 +151,14 @@ describe('deleteWithEagerPruningOfChildren', () => {
         { source_key: 'P1', target_entity_ref: 'E1' },
         { source_key: 'P1', target_entity_ref: 'E2' },
       );
-      await run(knex, { sourceKey: 'P1', entityRefs: ['E1'] });
+      await insertRelation(knex, { from: 'E2', to: 'E1' });
+      await deleteWithEagerPruningOfChildren({
+        knex,
+        sourceKey: 'P1',
+        entityRefs: ['E1'],
+      });
       await expect(remainingEntities(knex)).resolves.toEqual(['E2']);
+      await expect(entitiesMarkedForStitching(knex)).resolves.toEqual(['E2']);
     },
   );
 
@@ -156,7 +174,7 @@ describe('deleteWithEagerPruningOfChildren', () => {
 
           Scenario: P1 issues delete for E1
 
-          Result: E1 deleted; E2 and E3 remain
+          Result: E1 deleted; E2 and E3 remain; E2 marked for stitching because it had a relation to a deleted entity
        */
       const knex = await createDatabase(databaseId);
       await insertEntity(knex, 'E1', 'E2', 'E3');
@@ -167,8 +185,18 @@ describe('deleteWithEagerPruningOfChildren', () => {
         { source_key: 'P2', target_entity_ref: 'E3' },
         { source_entity_ref: 'E3', target_entity_ref: 'E2' },
       );
-      await run(knex, { sourceKey: 'P1', entityRefs: ['E1'] });
+      await insertRelation(
+        knex,
+        { from: 'E2', to: 'E1' },
+        { from: 'E3', to: 'E2' },
+      );
+      await deleteWithEagerPruningOfChildren({
+        knex,
+        sourceKey: 'P1',
+        entityRefs: ['E1'],
+      });
       await expect(remainingEntities(knex)).resolves.toEqual(['E2', 'E3']);
+      await expect(entitiesMarkedForStitching(knex)).resolves.toEqual(['E2']);
     },
   );
 
@@ -195,8 +223,13 @@ describe('deleteWithEagerPruningOfChildren', () => {
         { source_key: 'P1', target_entity_ref: 'E3' },
         { source_entity_ref: 'E3', target_entity_ref: 'E2' },
       );
-      await run(knex, { sourceKey: 'P1', entityRefs: ['E1'] });
+      await deleteWithEagerPruningOfChildren({
+        knex,
+        sourceKey: 'P1',
+        entityRefs: ['E1'],
+      });
       await expect(remainingEntities(knex)).resolves.toEqual(['E2', 'E3']);
+      await expect(entitiesMarkedForStitching(knex)).resolves.toEqual([]);
     },
   );
 
@@ -212,7 +245,7 @@ describe('deleteWithEagerPruningOfChildren', () => {
 
           Scenario: P1 issues delete for E1, then for E3
 
-          Result: Everything deleted, but in two steps
+          Result: Everything deleted, but in two steps; E4 marked for stitching in the first step because it had a relation to a deleted entity
        */
       const knex = await createDatabase(databaseId);
       await insertEntity(knex, 'E1', 'E2', 'E3', 'E4', 'E5', 'E6');
@@ -228,15 +261,26 @@ describe('deleteWithEagerPruningOfChildren', () => {
         { source_entity_ref: 'E3', target_entity_ref: 'E5' },
         { source_entity_ref: 'E5', target_entity_ref: 'E6' },
       );
-      await run(knex, { sourceKey: 'P1', entityRefs: ['E1'] });
+      await insertRelation(knex, { from: 'E4', to: 'E2' });
+      await deleteWithEagerPruningOfChildren({
+        knex,
+        sourceKey: 'P1',
+        entityRefs: ['E1'],
+      });
       await expect(remainingEntities(knex)).resolves.toEqual([
         'E3',
         'E4',
         'E5',
         'E6',
       ]);
-      await run(knex, { sourceKey: 'P1', entityRefs: ['E3'] });
+      await expect(entitiesMarkedForStitching(knex)).resolves.toEqual(['E4']);
+      await deleteWithEagerPruningOfChildren({
+        knex,
+        sourceKey: 'P1',
+        entityRefs: ['E3'],
+      });
       await expect(remainingEntities(knex)).resolves.toEqual([]);
+      await expect(entitiesMarkedForStitching(knex)).resolves.toEqual([]);
     },
   );
 
@@ -263,12 +307,17 @@ describe('deleteWithEagerPruningOfChildren', () => {
         { source_key: 'P1', target_entity_ref: 'E3' },
         { source_key: 'P2', target_entity_ref: 'E4' },
       );
-      await run(knex, { sourceKey: 'P1', entityRefs: ['E2', 'E3', 'E4'] });
+      await deleteWithEagerPruningOfChildren({
+        knex,
+        sourceKey: 'P1',
+        entityRefs: ['E2', 'E3', 'E4'],
+      });
       await expect(remainingEntities(knex)).resolves.toEqual([
         'E1',
         'E2',
         'E4',
       ]);
+      await expect(entitiesMarkedForStitching(knex)).resolves.toEqual([]);
     },
   );
 });

@@ -19,6 +19,21 @@ import { LoggerService } from './LoggerService';
 /**
  * @public
  */
+export type LifecycleServiceStartupHook = () => void | Promise<void>;
+
+/**
+ * @public
+ */
+export interface LifecycleServiceStartupOptions {
+  /**
+   * Optional {@link LoggerService} that will be used for logging instead of the default logger.
+   */
+  logger?: LoggerService;
+}
+
+/**
+ * @public
+ */
 export type LifecycleServiceShutdownHook = () => void | Promise<void>;
 
 /**
@@ -32,9 +47,27 @@ export interface LifecycleServiceShutdownOptions {
 }
 
 /**
+ * Provides registration of plugin startup and shutdown lifecycle hooks.
+ *
+ * See the {@link https://backstage.io/docs/backend-system/core-services/lifecycle | service documentation} for more details.
+ *
  * @public
  */
 export interface LifecycleService {
+  /**
+   * Register a function to be called when the backend has been initialized.
+   *
+   * @remarks
+   *
+   * When used with plugin scope it will wait for the plugin itself to have been initialized.
+   *
+   * When used with root scope it will wait for all plugins to have been initialized.
+   */
+  addStartupHook(
+    hook: LifecycleServiceStartupHook,
+    options?: LifecycleServiceStartupOptions,
+  ): void;
+
   /**
    * Register a function to be called when the backend is shutting down.
    */

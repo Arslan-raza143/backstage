@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Entity, GroupEntity, UserEntity } from '@backstage/catalog-model';
+import { Entity } from '@backstage/catalog-model';
 import { GithubCredentialType } from '@backstage/integration';
 import { graphql } from '@octokit/graphql';
 import {
@@ -24,19 +24,23 @@ import {
   TransformerContext,
   UserTransformer,
 } from './defaultTransformers';
-import { withLocations } from '../providers/GithubOrgEntityProvider';
+import { withLocations } from './withLocations';
 
 import { DeferredEntity } from '@backstage/plugin-catalog-node';
-
+import { Octokit } from '@octokit/core';
+import { LoggerService } from '@backstage/backend-plugin-api';
+import { throttling } from '@octokit/plugin-throttling';
 // Graphql types
 
 export type QueryResponse = {
   organization?: OrganizationResponse;
   repositoryOwner?: RepositoryOwnerResponse;
+  user?: UserResponse;
 };
 
 type RepositoryOwnerResponse = {
   repositories?: Connection<RepositoryResponse>;
+  repository?: RepositoryResponse;
 };
 
 export type OrganizationResponse = {
@@ -46,9 +50,17 @@ export type OrganizationResponse = {
   repositories?: Connection<RepositoryResponse>;
 };
 
+export type UserResponse = {
+  organizations?: Connection<GithubOrg>;
+};
+
 export type PageInfo = {
   hasNextPage: boolean;
   endCursor?: string;
+};
+
+export type GithubOrg = {
+  login: string;
 };
 
 /**
@@ -99,6 +111,7 @@ export type RepositoryResponse = {
     id: string;
     text: string;
   } | null;
+  visibility: string;
 };
 
 type RepositoryTopics = {
@@ -129,7 +142,7 @@ export async function getOrganizationUsers(
   org: string,
   tokenType: GithubCredentialType,
   userTransformer: UserTransformer = defaultUserTransformer,
-): Promise<{ users: UserEntity[] }> {
+): Promise<{ users: Entity[] }> {
   const query = `
     query users($org: String!, $email: Boolean!, $cursor: String) {
       organization(login: $org) {
@@ -178,12 +191,12 @@ export async function getOrganizationTeams(
   org: string,
   teamTransformer: TeamTransformer = defaultOrganizationTeamTransformer,
 ): Promise<{
-  groups: GroupEntity[];
+  teams: Entity[];
 }> {
   const query = `
     query teams($org: String!, $cursor: String) {
       organization(login: $org) {
-        teams(first: 100, after: $cursor) {
+        teams(first: 50, after: $cursor) {
           pageInfo { hasNextPage, endCursor }
           nodes {
             slug
@@ -212,7 +225,7 @@ export async function getOrganizationTeams(
   const materialisedTeams = async (
     item: GithubTeamResponse,
     ctx: TransformerContext,
-  ): Promise<GroupEntity | undefined> => {
+  ): Promise<Entity | undefined> => {
     const memberNames: GithubUser[] = [];
 
     if (!item.members.pageInfo.hasNextPage) {
@@ -237,7 +250,7 @@ export async function getOrganizationTeams(
     return await teamTransformer(team, ctx);
   };
 
-  const groups = await queryWithPaging(
+  const teams = await queryWithPaging(
     client,
     query,
     org,
@@ -246,7 +259,7 @@ export async function getOrganizationTeams(
     { org },
   );
 
-  return { groups };
+  return { teams };
 }
 
 export async function getOrganizationTeamsFromUsers(
@@ -255,7 +268,7 @@ export async function getOrganizationTeamsFromUsers(
   userLogins: string[],
   teamTransformer: TeamTransformer = defaultOrganizationTeamTransformer,
 ): Promise<{
-  groups: GroupEntity[];
+  teams: Entity[];
 }> {
   const query = `
    query teams($org: String!, $cursor: String, $userLogins: [String!] = "") {
@@ -296,7 +309,7 @@ export async function getOrganizationTeamsFromUsers(
   const materialisedTeams = async (
     item: GithubTeamResponse,
     ctx: TransformerContext,
-  ): Promise<GroupEntity | undefined> => {
+  ): Promise<Entity | undefined> => {
     const memberNames: GithubUser[] = [];
 
     if (!item.members.pageInfo.hasNextPage) {
@@ -321,7 +334,7 @@ export async function getOrganizationTeamsFromUsers(
     return await teamTransformer(team, ctx);
   };
 
-  const groups = await queryWithPaging(
+  const teams = await queryWithPaging(
     client,
     query,
     org,
@@ -330,7 +343,35 @@ export async function getOrganizationTeamsFromUsers(
     { org, userLogins },
   );
 
-  return { groups };
+  return { teams };
+}
+
+export async function getOrganizationsFromUser(
+  client: typeof graphql,
+  user: string,
+): Promise<{
+  orgs: string[];
+}> {
+  const query = `
+  query orgs($user: String!) {
+    user(login: $user) {
+      organizations(first: 100) {
+        nodes { login }
+        pageInfo { hasNextPage, endCursor }
+      }
+    }
+  }`;
+
+  const orgs = await queryWithPaging(
+    client,
+    query,
+    '',
+    r => r.user?.organizations,
+    async o => o.login,
+    { user },
+  );
+
+  return { orgs };
 }
 
 export async function getOrganizationTeam(
@@ -339,7 +380,7 @@ export async function getOrganizationTeam(
   teamSlug: string,
   teamTransformer: TeamTransformer = defaultOrganizationTeamTransformer,
 ): Promise<{
-  group: GroupEntity;
+  team: Entity;
 }> {
   const query = `
   query teams($org: String!, $teamSlug: String!) {
@@ -363,7 +404,7 @@ export async function getOrganizationTeam(
   const materialisedTeam = async (
     item: GithubTeamResponse,
     ctx: TransformerContext,
-  ): Promise<GroupEntity | undefined> => {
+  ): Promise<Entity | undefined> => {
     const memberNames: GithubUser[] = [];
 
     if (!item.members.pageInfo.hasNextPage) {
@@ -394,17 +435,17 @@ export async function getOrganizationTeam(
   });
 
   if (!response.organization?.team)
-    throw new Error(`Found no match for group ${teamSlug}`);
+    throw new Error(`Found no match for team ${teamSlug}`);
 
-  const group = await materialisedTeam(response.organization?.team, {
+  const team = await materialisedTeam(response.organization?.team, {
     query,
     client,
     org,
   });
 
-  if (!group) throw new Error(`Can't transform for group ${teamSlug}`);
+  if (!team) throw new Error(`Can't transform for team ${teamSlug}`);
 
-  return { group };
+  return { team };
 }
 
 export async function getOrganizationRepositories(
@@ -424,7 +465,7 @@ export async function getOrganizationRepositories(
     query repositories($org: String!, $catalogPathRef: String!, $cursor: String) {
       repositoryOwner(login: $org) {
         login
-        repositories(first: 100, after: $cursor) {
+        repositories(first: 50, after: $cursor) {
           nodes {
             name
             catalogInfoFile: object(expression: $catalogPathRef) {
@@ -437,6 +478,7 @@ export async function getOrganizationRepositories(
             url
             isArchived
             isFork
+            visibility
             repositoryTopics(first: 100) {
               nodes {
                 ... on RepositoryTopic {
@@ -468,6 +510,61 @@ export async function getOrganizationRepositories(
   );
 
   return { repositories };
+}
+
+export async function getOrganizationRepository(
+  client: typeof graphql,
+  org: string,
+  repoName: string,
+  catalogPath: string,
+): Promise<RepositoryResponse | null> {
+  let relativeCatalogPathRef: string;
+  // We must strip the leading slash or the query for objects does not work
+  if (catalogPath.startsWith('/')) {
+    relativeCatalogPathRef = catalogPath.substring(1);
+  } else {
+    relativeCatalogPathRef = catalogPath;
+  }
+  const catalogPathRef = `HEAD:${relativeCatalogPathRef}`;
+  const query = `
+    query repository($org: String!, $repoName: String!, $catalogPathRef: String!) {
+      repositoryOwner(login: $org) {
+        repository(name: $repoName) {
+          name
+          catalogInfoFile: object(expression: $catalogPathRef) {
+            __typename
+            ... on Blob {
+              id
+              text
+            }
+          }
+          url
+          isArchived
+          isFork
+          visibility
+          repositoryTopics(first: 100) {
+            nodes {
+              ... on RepositoryTopic {
+                topic {
+                  name
+                }
+              }
+            }
+          }
+          defaultBranchRef {
+            name
+          }
+        }
+      }
+    }`;
+
+  const response: QueryResponse = await client(query, {
+    org,
+    repoName,
+    catalogPathRef,
+  });
+
+  return response.repositoryOwner?.repository || null;
 }
 
 /**
@@ -543,6 +640,7 @@ export async function queryWithPaging<
   variables: Variables,
 ): Promise<OutputType[]> {
   const result: OutputType[] = [];
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
   let cursor: string | undefined = undefined;
   for (let j = 0; j < 1000 /* just for sanity */; ++j) {
@@ -571,6 +669,7 @@ export async function queryWithPaging<
     if (!conn.pageInfo.hasNextPage) {
       break;
     } else {
+      await sleep(1000);
       cursor = conn.pageInfo.endCursor;
     }
   }
@@ -613,3 +712,58 @@ export const createReplaceEntitiesOperation =
       added: entitiesToReplace,
     };
   };
+
+/**
+ * Creates a GraphQL Client with Throttling
+ */
+export const createGraphqlClient = (args: {
+  headers:
+    | {
+        [name: string]: string;
+      }
+    | undefined;
+  baseUrl: string;
+  logger: LoggerService;
+}): typeof graphql => {
+  const { headers, baseUrl, logger } = args;
+  const ThrottledOctokit = Octokit.plugin(throttling);
+  const octokit = new ThrottledOctokit({
+    throttle: {
+      onRateLimit: (retryAfter, rateLimitData, _, retryCount) => {
+        logger.warn(
+          `Request quota exhausted for request ${rateLimitData?.method} ${rateLimitData?.url}`,
+        );
+
+        if (retryCount < 2) {
+          logger.warn(
+            `Retrying after ${retryAfter} seconds for the ${retryCount} time due to Rate Limit!`,
+          );
+          return true;
+        }
+
+        return false;
+      },
+      onSecondaryRateLimit: (retryAfter, rateLimitData, _, retryCount) => {
+        logger.warn(
+          `Secondary Rate Limit Exhausted for request ${rateLimitData?.method} ${rateLimitData?.url}`,
+        );
+
+        if (retryCount < 2) {
+          logger.warn(
+            `Retrying after ${retryAfter} seconds for the ${retryCount} time due to Secondary Rate Limit!`,
+          );
+          return true;
+        }
+
+        return false;
+      },
+    },
+  });
+
+  const client = octokit.graphql.defaults({
+    headers,
+    baseUrl,
+  });
+
+  return client;
+};

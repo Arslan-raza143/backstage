@@ -18,21 +18,29 @@ import {
   IndexableDocument,
   IndexableResult,
   IndexableResultSet,
-  SearchEngine,
   SearchQuery,
 } from '@backstage/plugin-search-common';
-import { awsGetCredentials, createAWSConnection } from 'aws-os-connection';
+import { SearchEngine } from '@backstage/plugin-search-backend-node';
 import { isEmpty, isNumber, isNaN as nan } from 'lodash';
 
+import { AwsSigv4Signer } from '@opensearch-project/opensearch/aws';
+import { RequestSigner } from 'aws4';
 import { Config } from '@backstage/config';
-import { ElasticSearchClientOptions } from './ElasticSearchClientOptions';
+import {
+  ElasticSearchClientOptions,
+  OpenSearchElasticSearchClientOptions,
+} from './ElasticSearchClientOptions';
 import { ElasticSearchClientWrapper } from './ElasticSearchClientWrapper';
 import { ElasticSearchCustomIndexTemplate } from './types';
 import { ElasticSearchSearchEngineIndexer } from './ElasticSearchSearchEngineIndexer';
-import { Logger } from 'winston';
 import { MissingIndexError } from '@backstage/plugin-search-backend-node';
 import esb from 'elastic-builder';
 import { v4 as uuid } from 'uuid';
+import {
+  AwsCredentialProvider,
+  DefaultAwsCredentialsManager,
+} from '@backstage/integration-aws-node';
+import { LoggerService } from '@backstage/backend-plugin-api';
 
 export type { ElasticSearchClientOptions };
 
@@ -68,10 +76,11 @@ export type ElasticSearchQueryTranslator = (
  * @public
  */
 export type ElasticSearchOptions = {
-  logger: Logger;
+  logger: LoggerService;
   config: Config;
   aliasPostfix?: string;
   indexPrefix?: string;
+  translator?: ElasticSearchQueryTranslator;
 };
 
 /**
@@ -121,7 +130,7 @@ export class ElasticSearchSearchEngine implements SearchEngine {
     private readonly elasticSearchClientOptions: ElasticSearchClientOptions,
     private readonly aliasPostfix: string,
     private readonly indexPrefix: string,
-    private readonly logger: Logger,
+    private readonly logger: LoggerService,
     private readonly batchSize: number,
     highlightOptions?: ElasticSearchHighlightOptions,
   ) {
@@ -144,9 +153,11 @@ export class ElasticSearchSearchEngine implements SearchEngine {
       config,
       aliasPostfix = `search`,
       indexPrefix = ``,
+      translator,
     } = options;
-
-    const clientOptions = await createElasticSearchClientOptions(
+    const credentialProvider = DefaultAwsCredentialsManager.fromConfig(config);
+    const clientOptions = await this.createElasticSearchClientOptions(
+      await credentialProvider?.getCredentialProvider(),
       config.getConfig('search.elasticsearch'),
     );
     if (clientOptions.provider === 'elastic') {
@@ -159,7 +170,7 @@ export class ElasticSearchSearchEngine implements SearchEngine {
       logger.info('Initializing ElasticSearch search engine.');
     }
 
-    return new ElasticSearchSearchEngine(
+    const engine = new ElasticSearchSearchEngine(
       clientOptions,
       aliasPostfix,
       indexPrefix,
@@ -170,6 +181,18 @@ export class ElasticSearchSearchEngine implements SearchEngine {
         'search.elasticsearch.highlightOptions',
       ),
     );
+
+    for (const indexTemplate of this.readIndexTemplateConfig(
+      config.getConfig('search.elasticsearch'),
+    )) {
+      await engine.setIndexTemplate(indexTemplate);
+    }
+
+    if (translator) {
+      await engine.setTranslator(translator);
+    }
+
+    return engine;
   }
 
   /**
@@ -215,27 +238,48 @@ export class ElasticSearchSearchEngine implements SearchEngine {
             .boolQuery()
             .should(value.map(it => esb.matchQuery(key, it.toString())));
         }
-        this.logger.error(
-          'Failed to query, unrecognized filter type',
+        this.logger.error('Failed to query, unrecognized filter type', {
           key,
           value,
-        );
+        });
         throw new Error(
           'Failed to add filters to query. Unrecognized filter type',
         );
       });
-    const esbQuery = isBlank(term)
-      ? esb.matchAllQuery()
-      : esb
-          .multiMatchQuery(['*'], term)
-          .fuzziness('auto')
-          .minimumShouldMatch(1);
+
+    const esbQueries = [];
+    // https://regex101.com/r/Lr0MqS/1
+    const phraseTerms = term.match(/"[^"]*"/g);
+
+    if (isBlank(term)) {
+      const esbQuery = esb.matchAllQuery();
+      esbQueries.push(esbQuery);
+    } else if (phraseTerms && phraseTerms.length > 0) {
+      let restTerm = term;
+      for (const phraseTerm of phraseTerms) {
+        restTerm = restTerm.replace(phraseTerm, '');
+        const esbPhraseQuery = esb
+          .multiMatchQuery(['*'], phraseTerm.replace(/"/g, ''))
+          .type('phrase');
+        esbQueries.push(esbPhraseQuery);
+      }
+      if (restTerm?.length > 0) {
+        const esbRestQuery = esb
+          .multiMatchQuery(['*'], restTerm.trim())
+          .fuzziness('auto');
+        esbQueries.push(esbRestQuery);
+      }
+    } else {
+      const esbQuery = esb.multiMatchQuery(['*'], term).fuzziness('auto');
+      esbQueries.push(esbQuery);
+    }
+
     const pageSize = query.pageLimit || 25;
     const { page } = decodePageCursor(pageCursor);
 
     let esbRequestBodySearch = esb
       .requestBodySearch()
-      .query(esb.boolQuery().filter(filter).must([esbQuery]))
+      .query(esb.boolQuery().filter(filter).should(esbQueries))
       .from(page * pageSize)
       .size(pageSize);
 
@@ -282,9 +326,17 @@ export class ElasticSearchSearchEngine implements SearchEngine {
       elasticSearchClientWrapper: this.elasticSearchClientWrapper,
       logger: indexerLogger,
       batchSize: this.batchSize,
+      skipRefresh:
+        (
+          this
+            .elasticSearchClientOptions as OpenSearchElasticSearchClientOptions
+        )?.service === 'aoss',
     });
 
     // Attempt cleanup upon failure.
+    // todo(@backstage/search-maintainers): Consider introducing a more
+    // formal mechanism for handling such errors in BatchSearchEngineIndexer and
+    // replacing this handler with it. See: #17291
     indexer.on('error', async e => {
       indexerLogger.error(`Failed to index documents for type ${type}`, e);
       let cleanupError: Error | undefined;
@@ -314,6 +366,7 @@ export class ElasticSearchSearchEngine implements SearchEngine {
 
           attempts++;
         }
+        done();
       });
 
       if (cleanupError) {
@@ -409,6 +462,126 @@ export class ElasticSearchSearchEngine implements SearchEngine {
     const postFix = this.aliasPostfix ? `__${this.aliasPostfix}` : '';
     return `${this.indexPrefix}${type}${postFix}`;
   }
+
+  private static async createElasticSearchClientOptions(
+    credentialProvider: AwsCredentialProvider,
+    config?: Config,
+  ): Promise<ElasticSearchClientOptions> {
+    if (!config) {
+      throw new Error('No elastic search config found');
+    }
+    const clientOptionsConfig = config.getOptionalConfig('clientOptions');
+    const sslConfig = clientOptionsConfig?.getOptionalConfig('ssl');
+
+    if (config.getOptionalString('provider') === 'elastic') {
+      const authConfig = config.getConfig('auth');
+      return {
+        provider: 'elastic',
+        cloud: {
+          id: config.getString('cloudId'),
+        },
+        auth: {
+          username: authConfig.getString('username'),
+          password: authConfig.getString('password'),
+        },
+        ...(sslConfig
+          ? {
+              ssl: {
+                rejectUnauthorized:
+                  sslConfig?.getOptionalBoolean('rejectUnauthorized'),
+              },
+            }
+          : {}),
+      };
+    }
+    if (config.getOptionalString('provider') === 'aws') {
+      const requestSigner = new RequestSigner(config.getString('node'));
+      const service =
+        config.getOptionalString('service') ?? requestSigner.service;
+      if (service !== 'es' && service !== 'aoss')
+        throw new Error(`Unrecognized serivce type: ${service}`);
+      return {
+        provider: 'aws',
+        node: config.getString('node'),
+        region: config.getOptionalString('region'),
+        service,
+        ...(sslConfig
+          ? {
+              ssl: {
+                rejectUnauthorized:
+                  sslConfig?.getOptionalBoolean('rejectUnauthorized'),
+              },
+            }
+          : {}),
+        ...AwsSigv4Signer({
+          region: config.getOptionalString('region') ?? requestSigner.region, // for backwards compatibility
+          service: service,
+          getCredentials: async () =>
+            await credentialProvider.sdkCredentialProvider(),
+        }),
+      };
+    }
+    if (config.getOptionalString('provider') === 'opensearch') {
+      const authConfig = config.getConfig('auth');
+      return {
+        provider: 'opensearch',
+        node: config.getString('node'),
+        auth: {
+          username: authConfig.getString('username'),
+          password: authConfig.getString('password'),
+        },
+        ...(sslConfig
+          ? {
+              ssl: {
+                rejectUnauthorized:
+                  sslConfig?.getOptionalBoolean('rejectUnauthorized'),
+              },
+            }
+          : {}),
+      };
+    }
+    const authConfig = config.getOptionalConfig('auth');
+    const auth =
+      authConfig &&
+      (authConfig.has('apiKey')
+        ? {
+            apiKey: authConfig.getString('apiKey'),
+          }
+        : {
+            username: authConfig.getString('username'),
+            password: authConfig.getString('password'),
+          });
+    return {
+      node: config.getString('node'),
+      auth,
+      ...(sslConfig
+        ? {
+            ssl: {
+              rejectUnauthorized:
+                sslConfig?.getOptionalBoolean('rejectUnauthorized'),
+            },
+          }
+        : {}),
+    };
+  }
+
+  private static readIndexTemplateConfig(
+    config: Config,
+  ): ElasticSearchCustomIndexTemplate[] {
+    return (
+      config.getOptionalConfigArray('indexTemplates')?.map(templateConfig => {
+        const bodyConfig = templateConfig.getConfig('body');
+        return {
+          name: templateConfig.getString('name'),
+          body: {
+            index_patterns: bodyConfig.getStringArray('index_patterns'),
+            composed_of: bodyConfig.getOptionalStringArray('composed_of'),
+            template: bodyConfig.getOptionalConfig('template')?.get(),
+          },
+        };
+      }) ?? []
+    );
+  }
 }
 
 /**
@@ -426,98 +599,4 @@ export function decodePageCursor(pageCursor?: string): { page: number } {
 
 export function encodePageCursor({ page }: { page: number }): string {
   return Buffer.from(`${page}`, 'utf-8').toString('base64');
-}
-
-export async function createElasticSearchClientOptions(
-  config?: Config,
-): Promise<ElasticSearchClientOptions> {
-  if (!config) {
-    throw new Error('No elastic search config found');
-  }
-  const clientOptionsConfig = config.getOptionalConfig('clientOptions');
-  const sslConfig = clientOptionsConfig?.getOptionalConfig('ssl');
-
-  if (config.getOptionalString('provider') === 'elastic') {
-    const authConfig = config.getConfig('auth');
-    return {
-      provider: 'elastic',
-      cloud: {
-        id: config.getString('cloudId'),
-      },
-      auth: {
-        username: authConfig.getString('username'),
-        password: authConfig.getString('password'),
-      },
-      ...(sslConfig
-        ? {
-            ssl: {
-              rejectUnauthorized:
-                sslConfig?.getOptionalBoolean('rejectUnauthorized'),
-            },
-          }
-        : {}),
-    };
-  }
-  if (config.getOptionalString('provider') === 'aws') {
-    const awsCredentials = await awsGetCredentials();
-    const AWSConnection = createAWSConnection(awsCredentials);
-    return {
-      provider: 'aws',
-      // todo(backstage/techdocs-core): Remove the following ts-ignore when
-      // aws-os-connection is updated to work with opensearch >= 2.0.0
-      // @ts-ignore
-      node: config.getString('node'),
-      ...AWSConnection,
-      ...(sslConfig
-        ? {
-            ssl: {
-              rejectUnauthorized:
-                sslConfig?.getOptionalBoolean('rejectUnauthorized'),
-            },
-          }
-        : {}),
-    };
-  }
-  if (config.getOptionalString('provider') === 'opensearch') {
-    const authConfig = config.getConfig('auth');
-    return {
-      provider: 'opensearch',
-      node: config.getString('node'),
-      auth: {
-        username: authConfig.getString('username'),
-        password: authConfig.getString('password'),
-      },
-      ...(sslConfig
-        ? {
-            ssl: {
-              rejectUnauthorized:
-                sslConfig?.getOptionalBoolean('rejectUnauthorized'),
-            },
-          }
-        : {}),
-    };
-  }
-  const authConfig = config.getOptionalConfig('auth');
-  const auth =
-    authConfig &&
-    (authConfig.has('apiKey')
-      ? {
-          apiKey: authConfig.getString('apiKey'),
-        }
-      : {
-          username: authConfig.getString('username'),
-          password: authConfig.getString('password'),
-        });
-  return {
-    node: config.getString('node'),
-    auth,
-    ...(sslConfig
-      ? {
-          ssl: {
-            rejectUnauthorized:
-              sslConfig?.getOptionalBoolean('rejectUnauthorized'),
-          },
-        }
-      : {}),
-  };
 }

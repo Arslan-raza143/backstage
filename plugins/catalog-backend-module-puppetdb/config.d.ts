@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { TaskScheduleDefinition } from '@backstage/backend-tasks';
+import { SchedulerServiceTaskScheduleDefinition } from '@backstage/backend-plugin-api';
 
 /**
  * Represents the configuration for the Backstage.
@@ -44,11 +44,10 @@ export interface Config {
             /**
              * (Optional) Task schedule definition for the refresh.
              */
-            schedule?: TaskScheduleDefinition;
+            schedule?: SchedulerServiceTaskScheduleDefinition;
           }
-        | Record<
-            string,
-            {
+        | {
+            [name: string]: {
               /**
                * (Required) The base URL of PuppetDB API instance.
                */
@@ -60,9 +59,9 @@ export interface Config {
               /**
                * (Optional) Task schedule definition for the refresh.
                */
-              schedule?: TaskScheduleDefinition;
-            }
-          >;
+              schedule?: SchedulerServiceTaskScheduleDefinition;
+            };
+          };
     };
   };
 }

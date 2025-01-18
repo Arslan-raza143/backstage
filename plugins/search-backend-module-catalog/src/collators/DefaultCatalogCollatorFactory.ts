@@ -14,76 +14,83 @@
  * limitations under the License.
  */
 
+import { AuthService } from '@backstage/backend-plugin-api';
+import { QueryEntitiesInitialRequest } from '@backstage/catalog-client';
+import { stringifyEntityRef } from '@backstage/catalog-model';
 import { Config } from '@backstage/config';
-import {
-  PluginEndpointDiscovery,
-  TokenManager,
-} from '@backstage/backend-common';
-import {
-  CatalogApi,
-  CatalogClient,
-  GetEntitiesRequest,
-} from '@backstage/catalog-client';
-import { DocumentCollatorFactory } from '@backstage/plugin-search-common';
-import { catalogEntityReadPermission } from '@backstage/plugin-catalog-common/alpha';
 import { CatalogEntityDocument } from '@backstage/plugin-catalog-common';
+import { catalogEntityReadPermission } from '@backstage/plugin-catalog-common/alpha';
+import { CatalogService } from '@backstage/plugin-catalog-node';
 import { Permission } from '@backstage/plugin-permission-common';
+import { DocumentCollatorFactory } from '@backstage/plugin-search-common';
 import { Readable } from 'stream';
 import { CatalogCollatorEntityTransformer } from './CatalogCollatorEntityTransformer';
+import { readCollatorConfigOptions } from './config';
 import { defaultCatalogCollatorEntityTransformer } from './defaultCatalogCollatorEntityTransformer';
-import { stringifyEntityRef } from '@backstage/catalog-model';
 
-/** @public */
 export type DefaultCatalogCollatorFactoryOptions = {
-  discovery: PluginEndpointDiscovery;
-  tokenManager: TokenManager;
-  locationTemplate?: string;
-  filter?: GetEntitiesRequest['filter'];
-  batchSize?: number;
-  catalogClient?: CatalogApi;
+  auth: AuthService;
+  catalog: CatalogService;
+  /*
+   * Allows you to customize how entities are shaped into documents.
+   */
   entityTransformer?: CatalogCollatorEntityTransformer;
 };
 
-/** @public */
+/**
+ * Collates entities from the Catalog into documents for the search backend.
+ */
 export class DefaultCatalogCollatorFactory implements DocumentCollatorFactory {
   public readonly type = 'software-catalog';
   public readonly visibilityPermission: Permission =
     catalogEntityReadPermission;
 
   private locationTemplate: string;
-  private filter?: GetEntitiesRequest['filter'];
+  private filter?: QueryEntitiesInitialRequest['filter'];
   private batchSize: number;
-  private readonly catalogClient: CatalogApi;
-  private tokenManager: TokenManager;
+  private readonly catalog: CatalogService;
   private entityTransformer: CatalogCollatorEntityTransformer;
+  private auth: AuthService;
 
   static fromConfig(
-    _config: Config,
+    configRoot: Config,
     options: DefaultCatalogCollatorFactoryOptions,
   ) {
-    return new DefaultCatalogCollatorFactory(options);
+    const configOptions = readCollatorConfigOptions(configRoot);
+    return new DefaultCatalogCollatorFactory({
+      locationTemplate: configOptions.locationTemplate,
+      filter: configOptions.filter,
+      batchSize: configOptions.batchSize,
+      entityTransformer: options.entityTransformer,
+      auth: options.auth,
+      catalog: options.catalog,
+    });
   }
 
-  private constructor(options: DefaultCatalogCollatorFactoryOptions) {
+  private constructor(options: {
+    locationTemplate: string;
+    filter: QueryEntitiesInitialRequest['filter'];
+    batchSize: number;
+    entityTransformer?: CatalogCollatorEntityTransformer;
+    auth: AuthService;
+    catalog: CatalogService;
+  }) {
     const {
+      auth,
       batchSize,
-      discovery,
       locationTemplate,
       filter,
-      catalogClient,
-      tokenManager,
+      catalog,
       entityTransformer,
     } = options;
 
-    this.locationTemplate =
-      locationTemplate || '/catalog/:namespace/:kind/:name';
+    this.locationTemplate = locationTemplate;
     this.filter = filter;
-    this.batchSize = batchSize || 500;
-    this.catalogClient =
-      catalogClient || new CatalogClient({ discoveryApi: discovery });
-    this.tokenManager = tokenManager;
+    this.batchSize = batchSize;
+    this.catalog = catalog;
     this.entityTransformer =
       entityTransformer ?? defaultCatalogCollatorEntityTransformer;
+    this.auth = auth;
   }
 
   async getCollator(): Promise<Readable> {
@@ -91,43 +98,37 @@ export class DefaultCatalogCollatorFactory implements DocumentCollatorFactory {
   }
 
   private async *execute(): AsyncGenerator<CatalogEntityDocument> {
-    const { token } = await this.tokenManager.getToken();
     let entitiesRetrieved = 0;
-    let moreEntitiesToGet = true;
+    let cursor: string | undefined = undefined;
 
-    // Offset/limit pagination is used on the Catalog Client in order to
-    // limit (and allow some control over) memory used by the search backend
-    // at index-time.
-    while (moreEntitiesToGet) {
-      const entities = (
-        await this.catalogClient.getEntities(
-          {
-            filter: this.filter,
-            limit: this.batchSize,
-            offset: entitiesRetrieved,
-          },
-          { token },
-        )
-      ).items;
+    do {
+      const response = await this.catalog.queryEntities(
+        {
+          filter: this.filter,
+          limit: this.batchSize,
+          ...(cursor ? { cursor } : {}),
+        },
+        { credentials: await this.auth.getOwnServiceCredentials() },
+      );
+      cursor = response.pageInfo.nextCursor;
+      entitiesRetrieved += response.items.length;
 
-      // Control looping through entity batches.
-      moreEntitiesToGet = entities.length === this.batchSize;
-      entitiesRetrieved += entities.length;
-
-      for (const entity of entities) {
+      for (const entity of response.items) {
         yield {
           ...this.entityTransformer(entity),
           authorization: {
             resourceRef: stringifyEntityRef(entity),
           },
           location: this.applyArgsToFormat(this.locationTemplate, {
-            namespace: entity.metadata.namespace || 'default',
-            kind: entity.kind,
-            name: entity.metadata.name,
+            namespace: encodeURIComponent(
+              entity.metadata.namespace || 'default',
+            ),
+            kind: encodeURIComponent(entity.kind),
+            name: encodeURIComponent(entity.metadata.name),
           }),
         };
       }
-    }
+    } while (cursor);
   }
 
   private applyArgsToFormat(

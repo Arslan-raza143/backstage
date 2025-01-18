@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import { ComponentType } from 'react';
+import { ComponentType, PropsWithChildren } from 'react';
 import {
   AnyApiFactory,
   AppTheme,
-  IconComponent,
   BackstagePlugin,
+  ExternalRouteRef,
+  FeatureFlag,
+  IconComponent,
+  IdentityApi,
   RouteRef,
   SubRouteRef,
-  ExternalRouteRef,
-  IdentityApi,
-  FeatureFlag,
 } from '@backstage/core-plugin-api';
 import { AppConfig } from '@backstage/config';
 
@@ -33,33 +33,33 @@ import { AppConfig } from '@backstage/config';
  *
  * @public
  */
-export type BootErrorPageProps = {
+export type BootErrorPageProps = PropsWithChildren<{
   step: 'load-config' | 'load-chunk';
   error: Error;
-};
+}>;
 
 /**
  * Props for the `SignInPage` component of {@link AppComponents}.
  *
  * @public
  */
-export type SignInPageProps = {
+export type SignInPageProps = PropsWithChildren<{
   /**
    * Set the IdentityApi on successful sign-in. This should only be called once.
    */
   onSignInSuccess(identityApi: IdentityApi): void;
-};
+}>;
 
 /**
  * Props for the fallback error boundary.
  *
  * @public
  */
-export type ErrorBoundaryFallbackProps = {
+export type ErrorBoundaryFallbackProps = PropsWithChildren<{
   plugin?: BackstagePlugin;
   error: Error;
   resetError: () => void;
-};
+}>;
 
 /**
  * A set of replaceable core components that are part of every Backstage app.
@@ -67,12 +67,12 @@ export type ErrorBoundaryFallbackProps = {
  * @public
  */
 export type AppComponents = {
-  NotFoundErrorPage: ComponentType<{}>;
+  NotFoundErrorPage: ComponentType<PropsWithChildren<{}>>;
   BootErrorPage: ComponentType<BootErrorPageProps>;
-  Progress: ComponentType<{}>;
-  Router: ComponentType<{ basename?: string }>;
+  Progress: ComponentType<PropsWithChildren<{}>>;
+  Router: ComponentType<PropsWithChildren<{ basename?: string }>>;
   ErrorBoundaryFallback: ComponentType<ErrorBoundaryFallbackProps>;
-  ThemeProvider?: ComponentType<{}>;
+  ThemeProvider?: ComponentType<PropsWithChildren<{}>>;
 
   /**
    * An optional sign-in page that will be rendered instead of the AppRouter at startup.
@@ -99,7 +99,8 @@ export type AppIcons = {
   'kind:location': IconComponent;
   'kind:system': IconComponent;
   'kind:user': IconComponent;
-
+  'kind:resource': IconComponent;
+  'kind:template': IconComponent;
   brokenImage: IconComponent;
   catalog: IconComponent;
   chat: IconComponent;
@@ -114,6 +115,8 @@ export type AppIcons = {
   techdocs: IconComponent;
   user: IconComponent;
   warning: IconComponent;
+  star: IconComponent;
+  unstarred: IconComponent;
 };
 
 /**
@@ -157,7 +160,7 @@ type TargetRouteMap<
     infer Params,
     any
   >
-    ? RouteRef<Params> | SubRouteRef<Params>
+    ? RouteRef<Params> | SubRouteRef<Params> | false
     : never;
 };
 
@@ -236,21 +239,13 @@ export type AppOptions = {
    *   title: 'Light Theme',
    *   variant: 'light',
    *   icon: <LightIcon />,
-   *   Provider: ({ children }) => (
-   *     <ThemeProvider theme={lightTheme}>
-   *       <CssBaseline>{children}</CssBaseline>
-   *     </ThemeProvider>
-   *   ),
+   *   Provider: ({ children }) => <UnifiedThemeProvider theme={themes.light} />,
    * }, {
    *   id: 'dark',
    *   title: 'Dark Theme',
    *   variant: 'dark',
    *   icon: <DarkIcon />,
-   *   Provider: ({ children }) => (
-   *     <ThemeProvider theme={darkTheme}>
-   *       <CssBaseline>{children}</CssBaseline>
-   *     </ThemeProvider>
-   *   ),
+   *   Provider: ({ children }) => <UnifiedThemeProvider theme={themes.dark} />,
    * }]
    * ```
    */
@@ -286,6 +281,21 @@ export type AppOptions = {
    * ```
    */
   bindRoutes?(context: { bind: AppRouteBinder }): void;
+
+  __experimentalTranslations?: {
+    defaultLanguage?: string;
+    availableLanguages?: string[];
+    resources?: Array<
+      // Separate declaration for now to avoid dependency on core-plugin-api/alpha and TS 5.0
+      | { $$type: '@backstage/TranslationResource'; id: string }
+      | {
+          $$type: '@backstage/TranslationMessages';
+          id: string;
+          full: boolean;
+          messages: Record<string, string>;
+        }
+    >;
+  };
 };
 
 /**
@@ -327,7 +337,7 @@ export type BackstageApp = {
    * );
    * ```
    */
-  createRoot(element: JSX.Element): ComponentType<{}>;
+  createRoot(element: JSX.Element): ComponentType<PropsWithChildren<{}>>;
 
   /**
    * Provider component that should wrap the Router created with getRouter()
@@ -335,7 +345,7 @@ export type BackstageApp = {
    *
    * @deprecated Use {@link BackstageApp.createRoot} instead.
    */
-  getProvider(): ComponentType<{}>;
+  getProvider(): ComponentType<PropsWithChildren<{}>>;
 
   /**
    * Router component that should wrap the App Routes create with getRoutes()
@@ -343,7 +353,7 @@ export type BackstageApp = {
    *
    * @deprecated Import and use the {@link AppRouter} component from `@backstage/core-app-api` instead
    */
-  getRouter(): ComponentType<{}>;
+  getRouter(): ComponentType<PropsWithChildren<{}>>;
 };
 
 /**

@@ -42,6 +42,7 @@ const userEntity = {
   spec: {
     profile: {
       displayName: 'User 1',
+      email: 'test@test.com',
     },
   },
 };
@@ -94,7 +95,7 @@ describe('DefaultCatalogCollatorEntityTransformer', () => {
 
       expect(document).toMatchObject({
         title: userEntity.metadata.name,
-        text: `${userEntity.metadata.description} : ${userEntity.spec.profile.displayName}`,
+        text: `${userEntity.metadata.description} : ${userEntity.spec.profile.displayName} : ${userEntity.spec.profile.email}`,
         namespace: 'default',
         componentType: 'other',
         lifecycle: '',
@@ -140,6 +141,35 @@ describe('DefaultCatalogCollatorEntityTransformer', () => {
       expect(document).toMatchObject({
         title: groupEntity.metadata.name,
         text: `${groupEntity.metadata.description} : ${groupEntity.spec.profile.displayName}`,
+        namespace: 'default',
+        componentType: 'other',
+        lifecycle: '',
+        owner: '',
+      });
+    });
+
+    it('sets text correctly when description is not provided', async () => {
+      const userEntityWithoutDescription = {
+        ...userEntity,
+        metadata: {
+          ...userEntity.metadata,
+          description: undefined,
+        },
+        spec: {
+          profile: {
+            ...userEntity.spec.profile,
+            email: undefined,
+          },
+        },
+      };
+
+      const document = defaultCatalogCollatorEntityTransformer(
+        userEntityWithoutDescription,
+      );
+
+      expect(document).toMatchObject({
+        title: userEntity.metadata.name,
+        text: userEntity.spec.profile.displayName,
         namespace: 'default',
         componentType: 'other',
         lifecycle: '',
